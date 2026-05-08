@@ -1,0 +1,62 @@
+package com.dermalens.app.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.dermalens.app.ui.screens.*
+
+sealed class Screen(val route: String) {
+    object Login : Screen("login")
+    object Register : Screen("register")
+    object Home : Screen("home")
+    object Scan : Screen("scan")
+    object ScanResult : Screen("scan_result")
+    object CareGuide : Screen("care_guide")
+    object ProgressTracker : Screen("progress_tracker")
+    object ClinicLocator : Screen("clinic_locator")
+    object Profile : Screen("profile")
+    object EditProfile : Screen("edit_profile")
+}
+
+@Composable
+fun DermaLensNavGraph(
+    navController: NavHostController = rememberNavController()
+) {
+    NavHost(
+        navController = navController,
+        startDestination = Screen.Login.route
+    ) {
+        composable(Screen.Login.route) {
+            LoginScreen(navController = navController)
+        }
+        composable(Screen.Register.route) {
+            RegisterScreen(navController = navController)
+        }
+        composable(Screen.Home.route) {
+            HomeScreen(navController = navController)
+        }
+        composable(Screen.Scan.route) {
+            ScanScreen(navController = navController)
+        }
+        composable(Screen.ScanResult.route) {
+            ScanResultScreen(navController = navController)
+        }
+        composable(Screen.CareGuide.route) {
+            CareGuideScreen(navController = navController)
+        }
+        composable(Screen.ProgressTracker.route) {
+            ProgressTrackerScreen(navController = navController)
+        }
+        composable(Screen.ClinicLocator.route) {
+            ClinicLocatorScreen(navController = navController)
+        }
+        composable(Screen.Profile.route) {
+            ProfileScreen(navController = navController)
+        }
+        composable(Screen.EditProfile.route) {
+            EditProfileScreen(navController = navController)
+        }
+    }
+}
