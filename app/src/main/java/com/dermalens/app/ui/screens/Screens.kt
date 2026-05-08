@@ -579,14 +579,6 @@ fun ProgressTrackerScreen(navController: NavController) {
     }
 }
 
-// ── Clinic Locator Screen ─────────────────────────────────────────────────────
-@Composable
-fun ClinicLocatorScreen(navController: NavController) {
-    PlaceholderScreen(title = "Clinic Locator", subtitle = "Find nearby dermatology clinics", icon = Icons.Default.LocationOn, navController = navController, showBottomNav = false) {
-        OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) { Text("Back") }
-    }
-}
-
 // ── Profile Screen ────────────────────────────────────────────────────────────
 @Composable
 fun ProfileScreen(navController: NavController) {
