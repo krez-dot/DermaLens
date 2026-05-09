@@ -8,6 +8,8 @@ import androidx.navigation.compose.rememberNavController
 import com.dermalens.app.ui.screens.*
 
 sealed class Screen(val route: String) {
+    object Splash : Screen("splash")
+    object Onboarding : Screen("onboarding")
     object Login : Screen("login")
     object Register : Screen("register")
     object Home : Screen("home")
@@ -26,8 +28,14 @@ fun DermaLensNavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Login.route
+        startDestination = Screen.Splash.route
     ) {
+        composable(Screen.Splash.route) {
+            SplashScreen(navController = navController)
+        }
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(navController = navController)
+        }
         composable(Screen.Login.route) {
             LoginScreen(navController = navController)
         }

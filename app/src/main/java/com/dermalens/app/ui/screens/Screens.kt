@@ -570,31 +570,3 @@ fun RegisterScreen(navController: NavController) {
         }
     }
 }
-
-// ── Progress Tracker Screen ───────────────────────────────────────────────────
-@Composable
-fun ProgressTrackerScreen(navController: NavController) {
-    PlaceholderScreen(title = "Progress Tracker", subtitle = "Your scan history and trends", icon = Icons.Default.Timeline, navController = navController) {
-        OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) { Text("Back") }
-    }
-}
-
-// ── Profile Screen ────────────────────────────────────────────────────────────
-@Composable
-fun ProfileScreen(navController: NavController) {
-    PlaceholderScreen(title = "My Profile", subtitle = "Manage your account", icon = Icons.Default.Person, navController = navController) {
-        Button(onClick = { navController.navigate(Screen.EditProfile.route) }, modifier = Modifier.fillMaxWidth()) { Text("Edit Profile") }
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = { navController.navigate(Screen.Login.route) { popUpTo(Screen.Home.route) { inclusive = true } } }, modifier = Modifier.fillMaxWidth()) { Text("Logout") }
-    }
-}
-
-// ── Edit Profile Screen ───────────────────────────────────────────────────────
-@Composable
-fun EditProfileScreen(navController: NavController) {
-    PlaceholderScreen(title = "Edit Profile", subtitle = "Update your information", icon = Icons.Default.Edit, navController = navController, showBottomNav = false) {
-        Button(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) { Text("Save Changes") }
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-    }
-}

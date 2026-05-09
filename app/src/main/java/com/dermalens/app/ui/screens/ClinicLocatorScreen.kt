@@ -1,7 +1,12 @@
 package com.dermalens.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,19 +22,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.navigation.NavController
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-
+import androidx.navigation.NavController
 
 data class Clinic(
     val name: String,
@@ -55,7 +54,7 @@ val mockClinics = listOf(
 @Composable
 fun ClinicLocatorScreen(navController: NavController) {
     val context = LocalContext.current
-    var showMap by remember { mutableStateOf(true) }
+    var showMap by remember { mutableStateOf(false) }
     var selectedClinic by remember { mutableStateOf<Clinic?>(null) }
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -72,12 +71,7 @@ fun ClinicLocatorScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         if (!hasLocationPermission) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
@@ -109,14 +103,11 @@ fun ClinicLocatorScreen(navController: NavController) {
             // Location permission banner
             if (!hasLocationPermission) {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.LocationOff, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -146,22 +137,47 @@ fun ClinicLocatorScreen(navController: NavController) {
             }
 
             if (showMap) {
-                Box(
+                // Map View with fixed height
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                    return false
+                                }
+                            }
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+                            settings.setSupportZoom(true)
+                            settings.builtInZoomControls = true
+                            settings.displayZoomControls = false
+                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            loadUrl("https://www.openstreetmap.org/export/embed.html?bbox=120.5763,15.4555,120.6163,15.4955&layer=mapnik&marker=15.4755,120.5963")
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.55f)
+                        .height(300.dp)
+                )
+
+                // Clinic cards below map
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OpenStreetMapView(lat = 15.4755, lng = 120.5963, clinics = mockClinics)
-                }
-                Column(modifier = Modifier.fillMaxWidth().background(Color.White).padding(16.dp)) {
-                    Text("Nearby Dermatology Clinics", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    mockClinics.take(2).forEach { clinic ->
+                    item {
+                        Text("Nearby Dermatology Clinics", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    items(mockClinics) { clinic ->
                         CompactClinicCard(clinic = clinic, onClick = { selectedClinic = clinic })
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             } else {
+                // List View
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
@@ -207,83 +223,12 @@ fun ClinicLocatorScreen(navController: NavController) {
 }
 
 @Composable
-fun OpenStreetMapView(lat: Double, lng: Double, clinics: List<Clinic>) {
-    val htmlContent = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { margin: 0; padding: 0; background: #e8f4f2; }
-                #map { 
-                    height: 100vh; 
-                    width: 100vw;
-                    background-image: url('https://tile.openstreetmap.org/14/13427/7451.png');
-                    background-size: cover;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .marker {
-                    position: absolute;
-                    background: #1A7A6E;
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 50%;
-                    border: 3px solid white;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-                    transform: translate(-50%, -50%);
-                }
-                iframe {
-                    width: 100%;
-                    height: 100%;
-                    border: none;
-                }
-            </style>
-        </head>
-        <body>
-            <iframe 
-                src="https://www.openstreetmap.org/export/embed.html?bbox=120.5863,15.4655,120.6063,15.4855&layer=mapnik&marker=$lat,$lng"
-                allowfullscreen>
-            </iframe>
-        </body>
-        </html>
-    """.trimIndent()
-
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                webViewClient = WebViewClient()
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.mixedContentMode =
-                    android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-                loadDataWithBaseURL(
-                    "https://www.openstreetmap.org",
-                    htmlContent,
-                    "text/html",
-                    "UTF-8",
-                    null
-                )
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
-}
-
-@Composable
 fun CompactClinicCard(clinic: Clinic, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
-        elevation = CardDefaults.cardElevation(0.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(DermaGreenLight), contentAlignment = Alignment.Center) {
