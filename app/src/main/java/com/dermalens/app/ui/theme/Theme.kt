@@ -52,7 +52,7 @@ fun DermaLensTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = DermaTypography,
         content = content
     )
 }

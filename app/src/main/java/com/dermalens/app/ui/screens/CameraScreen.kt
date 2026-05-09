@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -31,14 +32,13 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
 import java.util.concurrent.Executors
+import androidx.compose.foundation.BorderStroke
 
 @Composable
 fun ScanScreen(navController: NavController) {
     val context = LocalContext.current
     var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        )
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -81,68 +81,123 @@ fun CameraPreviewScreen(navController: NavController) {
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
+        // Camera Preview
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+
+        // Dark overlay at top and bottom
+        Box(modifier = Modifier.fillMaxWidth().height(120.dp).align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.5f)))
+        Box(modifier = Modifier.fillMaxWidth().height(180.dp).align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.6f)))
 
         // Top Bar
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).align(Alignment.TopCenter),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 48.dp).align(Alignment.TopCenter),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.size(40.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape)) {
+            IconButton(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.size(42.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
+            ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
-            Text("Skin Scan", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Skin Scan", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Position skin within frame", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+            }
+
             IconButton(
                 onClick = { isFlashOn = !isFlashOn; camera?.cameraControl?.enableTorch(isFlashOn) },
-                modifier = Modifier.size(40.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                modifier = Modifier.size(42.dp).background(
+                    if (isFlashOn) DermaGreen else Color.White.copy(alpha = 0.15f), CircleShape
+                )
             ) {
-                Icon(if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, contentDescription = "Flash", tint = if (isFlashOn) Color.Yellow else Color.White)
+                Icon(
+                    if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                    contentDescription = "Flash",
+                    tint = Color.White
+                )
             }
         }
 
         // Scan Frame
-        Box(modifier = Modifier.size(260.dp).align(Alignment.Center).border(2.dp, DermaGreen, RoundedCornerShape(24.dp)))
-
-        Text(
-            text = "Position affected skin area within the frame",
-            color = Color.White, fontSize = 13.sp, textAlign = TextAlign.Center,
-            modifier = Modifier.align(Alignment.Center).offset(y = 160.dp).padding(horizontal = 32.dp)
-                .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .align(Alignment.Center)
+                .border(2.dp, DermaGreen, RoundedCornerShape(24.dp))
         )
 
         // Bottom Controls
         Column(
-            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Color.Black.copy(alpha = 0.6f)).padding(24.dp),
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (isScanning) {
-                CircularProgressIndicator(color = DermaGreen, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Analyzing skin...", color = Color.White, fontSize = 14.sp)
-            } else {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { isFrontCamera = !isFrontCamera }, modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)) {
-                        Icon(Icons.Default.FlipCameraAndroid, contentDescription = "Flip", tint = Color.White, modifier = Modifier.size(26.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = DermaGreen, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Analyzing skin...", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
-                    Box(modifier = Modifier.size(72.dp).background(DermaGreen, CircleShape).border(4.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
-                        IconButton(onClick = {
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Flip camera
+                IconButton(
+                    onClick = { isFrontCamera = !isFrontCamera },
+                    modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
+                ) {
+                    Icon(Icons.Default.FlipCameraAndroid, contentDescription = "Flip", tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+
+                // Capture button
+                Box(
+                    modifier = Modifier
+                        .size(76.dp)
+                        .border(3.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                        .padding(5.dp)
+                        .clip(CircleShape)
+                        .background(DermaGreen),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(
+                        onClick = {
                             isScanning = true
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 isScanning = false
                                 navController.navigate(Screen.ScanResult.route)
                             }, 2000)
-                        }) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = "Scan", tint = Color.White, modifier = Modifier.size(32.dp))
-                        }
-                    }
-                    IconButton(onClick = { }, modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)) {
-                        Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery", tint = Color.White, modifier = Modifier.size(26.dp))
+                        },
+                        enabled = !isScanning
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Scan", tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Tap the button to scan your skin", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+
+                // Gallery
+                IconButton(
+                    onClick = { },
+                    modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
+                ) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery", tint = Color.White, modifier = Modifier.size(24.dp))
+                }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("Tap to scan your skin", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
         }
     }
 }
@@ -151,22 +206,37 @@ fun CameraPreviewScreen(navController: NavController) {
 fun CameraPermissionDeniedScreen(onRequestPermission: () -> Unit, navController: NavController) {
     Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(32.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(32.dp).background(Color.White),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(80.dp), tint = Color.Gray)
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Camera Permission Required", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("DermaLens needs camera access to scan your skin for conditions. Please grant camera permission to continue.", fontSize = 14.sp, color = Color.Gray, textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(onClick = onRequestPermission, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)) {
-                Text("Grant Camera Permission", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Box(
+                modifier = Modifier.size(88.dp).clip(RoundedCornerShape(24.dp)).background(DermaGreenLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(44.dp), tint = DermaGreen)
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp)) {
-                Text("Go Back")
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Camera Access Required", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827), textAlign = TextAlign.Center)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("DermaLens needs camera access to scan your skin for conditions. Please grant camera permission to continue.", fontSize = 14.sp, color = Color(0xFF6B7280), textAlign = TextAlign.Center, lineHeight = 22.sp)
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(
+                onClick = onRequestPermission,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
+            ) {
+                Text("Grant Camera Permission", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, Color(0xFFE5E7EB))
+            ) {
+                Text("Go Back", color = Color(0xFF374151))
             }
         }
     }
