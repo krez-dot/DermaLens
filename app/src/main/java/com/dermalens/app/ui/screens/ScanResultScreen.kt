@@ -13,12 +13,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
+import com.dermalens.app.ui.LocalAppSettings
 
 data class DetectionResult(
     val condition: String,
@@ -62,14 +65,15 @@ fun getSeverityBg(severity: String): Color {
 fun ScanResultScreen(navController: NavController) {
     val result = remember { mockDetectionResults.random() }
     var isSaved by remember { mutableStateOf(false) }
+    val settings = LocalAppSettings.current
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scan Result", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                title = { Text("Scan Result", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = false } } }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Go back to home")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = Color(0xFF111827))
@@ -83,59 +87,46 @@ fun ScanResultScreen(navController: NavController) {
                 .background(Color(0xFFF8F9FA))
                 .verticalScroll(rememberScrollState())
         ) {
-            // ── Detection Banner ──────────────────────────────────────────────
+            // Detection Banner
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Brush.verticalGradient(colors = listOf(result.color.copy(alpha = 0.9f), result.color)))
                     .padding(24.dp)
+                    .semantics { contentDescription = "Detected condition: ${result.condition}, ${result.severity} severity, ${result.confidence}% confidence" }
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    // Scan image placeholder
                     Box(
-                        modifier = Modifier
-                            .size(110.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+                        modifier = Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f)).border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.ImageSearch, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.ImageSearch, contentDescription = "Scan image placeholder", tint = Color.White, modifier = Modifier.size(40.dp))
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Scan Image", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                            Text("Scan Image", fontSize = settings.textSm.sp, color = Color.White.copy(alpha = 0.8f))
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(result.condition, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
-
+                    Text(result.condition, fontSize = settings.textTitle.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Confidence chip
                         Row(
-                            modifier = Modifier
-                                .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.confidence}% confidence" },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.Verified, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("%.1f%%".format(result.confidence), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("%.1f%%".format(result.confidence), color = Color.White, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold)
                         }
-
-                        // Severity chip
                         Row(
-                            modifier = Modifier
-                                .background(getSeverityBg(result.severity), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.background(getSeverityBg(result.severity), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.severity} severity" },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(getSeverityColor(result.severity)))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(result.severity, fontSize = 13.sp, color = getSeverityColor(result.severity), fontWeight = FontWeight.SemiBold)
+                            Text(result.severity, fontSize = settings.textBase.sp, color = getSeverityColor(result.severity), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -144,31 +135,23 @@ fun ScanResultScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-
                 // About Card
-                ResultCard(
-                    icon = Icons.Default.Info,
-                    iconBg = DermaGreenLight,
-                    iconTint = DermaGreen,
-                    title = "About this condition"
-                ) {
-                    Text(result.description, fontSize = 14.sp, color = Color(0xFF374151), lineHeight = 22.sp)
+                ResultCard(icon = Icons.Default.Info, iconBg = DermaGreenLight, iconTint = DermaGreen, title = "About this condition") {
+                    Text(result.description, fontSize = settings.textMd.sp, color = Color(0xFF374151), lineHeight = 22.sp)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Symptoms Card
-                ResultCard(
-                    icon = Icons.Default.List,
-                    iconBg = Color(0xFFFEF3C7),
-                    iconTint = Color(0xFFD97706),
-                    title = "Common Symptoms"
-                ) {
+                ResultCard(icon = Icons.Default.List, iconBg = Color(0xFFFEF3C7), iconTint = Color(0xFFD97706), title = "Common Symptoms") {
                     result.symptoms.forEach { symptom ->
-                        Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 4.dp).semantics { contentDescription = "Symptom: $symptom" },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(result.color))
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(symptom, fontSize = 14.sp, color = Color(0xFF374151))
+                            Text(symptom, fontSize = settings.textMd.sp, color = Color(0xFF374151))
                         }
                     }
                 }
@@ -176,33 +159,20 @@ fun ScanResultScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Recommendation Card
-                ResultCard(
-                    icon = Icons.Default.Lightbulb,
-                    iconBg = DermaGreenLight,
-                    iconTint = DermaGreen,
-                    title = "Recommendation",
-                    bgColor = DermaGreenLight
-                ) {
-                    Text(result.recommendation, fontSize = 14.sp, color = DermaGreenDark, lineHeight = 22.sp)
+                ResultCard(icon = Icons.Default.Lightbulb, iconBg = DermaGreenLight, iconTint = DermaGreen, title = "Recommendation", bgColor = DermaGreenLight) {
+                    Text(result.recommendation, fontSize = settings.textMd.sp, color = DermaGreenDark, lineHeight = 22.sp)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Disclaimer
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFFFF7ED))
-                        .padding(12.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFF7ED)).padding(12.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Text("⚕️", fontSize = 14.sp)
+                    Text("⚕️", fontSize = settings.textMd.sp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "This result is AI-generated and for reference only. Always consult a licensed dermatologist for accurate diagnosis.",
-                        fontSize = 12.sp, color = Color(0xFF92400E), lineHeight = 18.sp
-                    )
+                    Text("This result is AI-generated and for reference only. Always consult a licensed dermatologist for accurate diagnosis.", fontSize = settings.textBase.sp, color = Color(0xFF92400E), lineHeight = 18.sp)
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -210,41 +180,39 @@ fun ScanResultScreen(navController: NavController) {
                 // Action Buttons
                 Button(
                     onClick = { navController.navigate(Screen.CareGuide.route) },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = "View care guide for ${result.condition}" },
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
                 ) {
                     Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("View Care Guide", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("View Care Guide", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
                     onClick = { isSaved = true },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = if (isSaved) "Scan saved to history" else "Save scan to history" },
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSaved) Color(0xFF16A34A) else Color(0xFF0284C7)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else Color(0xFF0284C7))
                 ) {
                     Icon(if (isSaved) Icons.Default.Check else Icons.Default.BookmarkAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSaved) "Saved to History!" else "Save to History", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (isSaved) "Saved to History!" else "Save to History", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedButton(
                     onClick = { navController.navigate(Screen.Scan.route) { popUpTo(Screen.Scan.route) { inclusive = true } } },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = "Scan again" },
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.5.dp, Color(0xFFE5E7EB))
                 ) {
                     Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color(0xFF374151), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Scan Again", fontSize = 15.sp, color = Color(0xFF374151))
+                    Text("Scan Again", fontSize = settings.textLg.sp, color = Color(0xFF374151))
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -262,6 +230,7 @@ fun ResultCard(
     bgColor: Color = Color.White,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val settings = LocalAppSettings.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -270,14 +239,11 @@ fun ResultCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(iconBg),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
                     Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                Text(title, fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
             }
             Spacer(modifier = Modifier.height(12.dp))
             content()

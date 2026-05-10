@@ -1,6 +1,7 @@
 package com.dermalens.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -26,14 +29,15 @@ import androidx.navigation.NavController
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.User
 import com.dermalens.app.navigation.Screen
+import com.dermalens.app.ui.LocalAppSettings
 import kotlinx.coroutines.launch
 
 @Composable
-private fun dermaFieldColors() = OutlinedTextFieldDefaults.colors(
+private fun dermaFieldColors(highContrast: Boolean) = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = DermaGreen,
     focusedLabelColor = DermaGreen,
-    unfocusedBorderColor = Color(0xFFE5E7EB),
-    unfocusedLabelColor = Color(0xFF9CA3AF),
+    unfocusedBorderColor = if (highContrast) Color(0xFF000000) else Color(0xFFE5E7EB),
+    unfocusedLabelColor = if (highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF),
     focusedTextColor = Color(0xFF111827),
     unfocusedTextColor = Color(0xFF111827)
 )
@@ -45,6 +49,7 @@ fun LoginScreen(navController: NavController) {
     val db = remember { DermaDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    val settings = LocalAppSettings.current
 
     var email by remember { mutableStateOf(prefs.getString(DermaPrefs.KEY_REMEMBER_EMAIL, "") ?: "") }
     var password by remember { mutableStateOf("") }
@@ -55,6 +60,9 @@ fun LoginScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(email.isNotEmpty()) }
 
+    val bgColor = settings.background
+    val cardBg = if (settings.highContrast) Color(0xFFF0F0F0) else Color(0xFFFEE2E2)
+
     fun validate(): Boolean {
         var valid = true
         if (email.isBlank() || !email.contains("@")) { emailError = "Please enter a valid email address"; valid = false } else emailError = ""
@@ -62,28 +70,36 @@ fun LoginScreen(navController: NavController) {
         return valid
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(64.dp))
 
-            Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(24.dp)).background(DermaGreenLight), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.LocalHospital, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(44.dp))
+            Box(
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(24.dp))
+                    .background(DermaGreenLight)
+                    .then(if (settings.highContrast) Modifier.border(2.dp, Color.Black, RoundedCornerShape(24.dp)) else Modifier),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.LocalHospital, contentDescription = "DermaLens logo", tint = DermaGreen, modifier = Modifier.size(44.dp))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            Text("Welcome back", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+            Text("Welcome back", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("Sign in to continue to DermaLens", fontSize = 14.sp, color = Color(0xFF6B7280), textAlign = TextAlign.Center)
+            Text("Sign in to continue to DermaLens", fontSize = settings.textMd.sp, color = settings.textSecondary, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(40.dp))
 
             if (loginError.isNotEmpty()) {
-                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFFFEE2E2)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cardBg).padding(12.dp).semantics { contentDescription = "Error: $loginError" },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(Icons.Default.Error, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(loginError, fontSize = 13.sp, color = Color(0xFFDC2626))
+                    Text(loginError, fontSize = settings.textBase.sp, color = Color(0xFFDC2626))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -95,8 +111,8 @@ fun LoginScreen(navController: NavController) {
                 isError = emailError.isNotEmpty(),
                 supportingText = { if (emailError.isNotEmpty()) Text(emailError, color = Color(0xFFDC2626)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp), colors = dermaFieldColors()
+                singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Email address input field" },
+                shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast)
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -107,23 +123,25 @@ fun LoginScreen(navController: NavController) {
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF9CA3AF))
+                        Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (passwordVisible) "Hide password" else "Show password", tint = Color(0xFF9CA3AF))
                     }
                 },
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 isError = passwordError.isNotEmpty(),
                 supportingText = { if (passwordError.isNotEmpty()) Text(passwordError, color = Color(0xFFDC2626)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp), colors = dermaFieldColors()
+                singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Password input field" },
+                shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Remember Me
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it }, colors = CheckboxDefaults.colors(checkedColor = DermaGreen))
-                Text("Remember me", fontSize = 14.sp, color = Color(0xFF374151))
+                Checkbox(
+                    checked = rememberMe, onCheckedChange = { rememberMe = it },
+                    colors = CheckboxDefaults.colors(checkedColor = DermaGreen, uncheckedColor = if (settings.highContrast) Color.Black else Color(0xFF9CA3AF))
+                )
+                Text("Remember me", fontSize = settings.textMd.sp, color = settings.textPrimary)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -149,34 +167,34 @@ fun LoginScreen(navController: NavController) {
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Sign in button" },
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DermaGreen),
                 enabled = !isLoading
             ) {
                 if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                else Text("Sign In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                else Text("Sign In", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE5E7EB))
-                Text("  or  ", fontSize = 13.sp, color = Color(0xFF9CA3AF))
-                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE5E7EB))
+                HorizontalDivider(modifier = Modifier.weight(1f), color = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB))
+                Text("  or  ", fontSize = settings.textBase.sp, color = settings.textSecondary)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Don't have an account?", fontSize = 14.sp, color = Color(0xFF6B7280))
+                Text("Don't have an account?", fontSize = settings.textMd.sp, color = settings.textSecondary)
                 TextButton(onClick = { navController.navigate(Screen.Register.route) }) {
-                    Text("Sign Up", fontSize = 14.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                    Text("Sign Up", fontSize = settings.textMd.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            Text("⚕️ For diagnostic reference only. Always consult a licensed dermatologist.", fontSize = 11.sp, color = Color(0xFF9CA3AF), textAlign = TextAlign.Center, lineHeight = 16.sp)
+            Text("⚕️ For diagnostic reference only. Always consult a licensed dermatologist.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, lineHeight = 16.sp)
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -188,6 +206,7 @@ fun RegisterScreen(navController: NavController) {
     val context = LocalContext.current
     val db = remember { DermaDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
+    val settings = LocalAppSettings.current
 
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -211,39 +230,47 @@ fun RegisterScreen(navController: NavController) {
         return valid
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    Box(modifier = Modifier.fillMaxSize().background(settings.background)) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(56.dp))
 
-            Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(24.dp)).background(DermaGreenLight), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.PersonAdd, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(44.dp))
+            Box(
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(24.dp))
+                    .background(DermaGreenLight)
+                    .then(if (settings.highContrast) Modifier.border(2.dp, Color.Black, RoundedCornerShape(24.dp)) else Modifier),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.PersonAdd, contentDescription = "Create account icon", tint = DermaGreen, modifier = Modifier.size(44.dp))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            Text("Create account", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+            Text("Create account", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("Join DermaLens today", fontSize = 14.sp, color = Color(0xFF6B7280))
+            Text("Join DermaLens today", fontSize = settings.textMd.sp, color = settings.textSecondary)
             Spacer(modifier = Modifier.height(32.dp))
 
             if (registerError.isNotEmpty()) {
-                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFFFEE2E2)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFFFEE2E2)).padding(12.dp).semantics { contentDescription = "Error: $registerError" },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(Icons.Default.Error, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(registerError, fontSize = 13.sp, color = Color(0xFFDC2626))
+                    Text(registerError, fontSize = settings.textBase.sp, color = Color(0xFFDC2626))
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            OutlinedTextField(value = name, onValueChange = { name = it; nameError = "" }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, isError = nameError.isNotEmpty(), supportingText = { if (nameError.isNotEmpty()) Text(nameError, color = Color(0xFFDC2626)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = dermaFieldColors())
+            OutlinedTextField(value = name, onValueChange = { name = it; nameError = "" }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, isError = nameError.isNotEmpty(), supportingText = { if (nameError.isNotEmpty()) Text(nameError, color = Color(0xFFDC2626)) }, singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Full name input field" }, shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast))
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(value = email, onValueChange = { email = it; emailError = ""; registerError = "" }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, isError = emailError.isNotEmpty(), supportingText = { if (emailError.isNotEmpty()) Text(emailError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = dermaFieldColors())
+            OutlinedTextField(value = email, onValueChange = { email = it; emailError = ""; registerError = "" }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, isError = emailError.isNotEmpty(), supportingText = { if (emailError.isNotEmpty()) Text(emailError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Email address input field" }, shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast))
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it; passwordError = "" }, label = { Text("Password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF9CA3AF)) } }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), isError = passwordError.isNotEmpty(), supportingText = { if (passwordError.isNotEmpty()) Text(passwordError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = dermaFieldColors())
+            OutlinedTextField(value = password, onValueChange = { password = it; passwordError = "" }, label = { Text("Password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (passwordVisible) "Hide password" else "Show password", tint = Color(0xFF9CA3AF)) } }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), isError = passwordError.isNotEmpty(), supportingText = { if (passwordError.isNotEmpty()) Text(passwordError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Password input field" }, shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast))
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; confirmPasswordError = "" }, label = { Text("Confirm password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) { Icon(if (confirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF9CA3AF)) } }, visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(), isError = confirmPasswordError.isNotEmpty(), supportingText = { if (confirmPasswordError.isNotEmpty()) Text(confirmPasswordError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = dermaFieldColors())
+            OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; confirmPasswordError = "" }, label = { Text("Confirm password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) { Icon(if (confirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password", tint = Color(0xFF9CA3AF)) } }, visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(), isError = confirmPasswordError.isNotEmpty(), supportingText = { if (confirmPasswordError.isNotEmpty()) Text(confirmPasswordError, color = Color(0xFFDC2626)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Confirm password input field" }, shape = RoundedCornerShape(14.dp), colors = dermaFieldColors(settings.highContrast))
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -262,21 +289,21 @@ fun RegisterScreen(navController: NavController) {
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Create account button" },
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DermaGreen),
                 enabled = !isLoading
             ) {
                 if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                else Text("Create Account", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                else Text("Create Account", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Already have an account?", fontSize = 14.sp, color = Color(0xFF6B7280))
+                Text("Already have an account?", fontSize = settings.textMd.sp, color = settings.textSecondary)
                 TextButton(onClick = { navController.popBackStack() }) {
-                    Text("Sign In", fontSize = 14.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                    Text("Sign In", fontSize = settings.textMd.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))

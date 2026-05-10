@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -14,12 +15,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import com.dermalens.app.ui.LocalAppSettings
 
 data class CareGuideData(
     val condition: String,
@@ -82,14 +85,15 @@ val careGuideList = listOf(
 fun CareGuideScreen(navController: NavController) {
     var selectedTab by remember { mutableStateOf(0) }
     val guide = careGuideList[selectedTab]
+    val settings = LocalAppSettings.current
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Care Guide", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                title = { Text("Care Guide", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Go back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = Color(0xFF111827))
@@ -98,27 +102,24 @@ fun CareGuideScreen(navController: NavController) {
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding).background(Color(0xFFF8F9FA))) {
 
-            // ── Condition Tabs ────────────────────────────────────────────────
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color.White,
                 contentColor = DermaGreen,
                 edgePadding = 12.dp,
                 indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = DermaGreen
-                    )
+                    TabRowDefaults.SecondaryIndicator(modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]), color = DermaGreen)
                 }
             ) {
                 careGuideList.forEachIndexed { index, item ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
+                        modifier = Modifier.semantics { contentDescription = "Care guide for ${item.condition}" },
                         text = {
                             Text(
                                 "${item.emoji} ${item.condition.split(" ").first()}",
-                                fontSize = 12.sp,
+                                fontSize = settings.textBase.sp,
                                 fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (selectedTab == index) DermaGreen else Color(0xFF6B7280)
                             )
@@ -127,27 +128,19 @@ fun CareGuideScreen(navController: NavController) {
                 }
             }
 
-            // ── Content ───────────────────────────────────────────────────────
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-
                 // Banner
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Brush.verticalGradient(colors = listOf(guide.color.copy(alpha = 0.85f), guide.color)))
-                        .padding(20.dp)
+                    modifier = Modifier.fillMaxWidth().background(Brush.verticalGradient(colors = listOf(guide.color.copy(alpha = 0.85f), guide.color))).padding(20.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
                             Text(guide.emoji, fontSize = 28.sp)
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            Text(guide.condition, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Skincare Guide", fontSize = 13.sp, color = Color.White.copy(alpha = 0.8f))
+                            Text(guide.condition, fontSize = settings.textXxl.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Skincare Guide", fontSize = settings.textBase.sp, color = Color.White.copy(alpha = 0.8f))
                         }
                     }
                 }
@@ -155,83 +148,73 @@ fun CareGuideScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-
-                    // Overview
                     CareSection(icon = Icons.Default.Info, iconBg = DermaGreenLight, iconTint = DermaGreen, title = "Overview") {
-                        Text(guide.overview, fontSize = 14.sp, color = Color(0xFF374151), lineHeight = 22.sp)
+                        Text(guide.overview, fontSize = settings.textMd.sp, color = Color(0xFF374151), lineHeight = 22.sp)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Routine
                     CareSection(icon = Icons.Default.WbSunny, iconBg = Color(0xFFFEF3C7), iconTint = Color(0xFFD97706), title = "Skincare Routine") {
                         guide.routine.forEachIndexed { index, step ->
-                            Row(modifier = Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
-                                Box(
-                                    modifier = Modifier.size(22.dp).clip(CircleShape).background(DermaGreen),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("${index + 1}", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Row(modifier = Modifier.padding(vertical = 5.dp).semantics { contentDescription = "Step ${index + 1}: $step" }, verticalAlignment = Alignment.Top) {
+                                Box(modifier = Modifier.size(22.dp).clip(CircleShape).background(DermaGreen), contentAlignment = Alignment.Center) {
+                                    Text("${index + 1}", fontSize = settings.textSm.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(step, fontSize = 13.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                                Text(step, fontSize = settings.textBase.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Do's
                     CareSection(icon = Icons.Default.CheckCircle, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Do's") {
                         guide.dos.forEach { item ->
-                            Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                            Row(modifier = Modifier.padding(vertical = 4.dp).semantics { contentDescription = "Do: $item" }, verticalAlignment = Alignment.Top) {
                                 Box(modifier = Modifier.size(18.dp).clip(CircleShape).background(Color(0xFFDCFCE7)), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(12.dp))
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(item, fontSize = 13.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                                Text(item, fontSize = settings.textBase.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Don'ts
                     CareSection(icon = Icons.Default.Cancel, iconBg = Color(0xFFFEF2F2), iconTint = Color(0xFFDC2626), title = "Don'ts") {
                         guide.donts.forEach { item ->
-                            Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                            Row(modifier = Modifier.padding(vertical = 4.dp).semantics { contentDescription = "Don't: $item" }, verticalAlignment = Alignment.Top) {
                                 Box(modifier = Modifier.size(18.dp).clip(CircleShape).background(Color(0xFFFEE2E2)), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.Close, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(12.dp))
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(item, fontSize = 13.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                                Text(item, fontSize = settings.textBase.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Treatments
                     CareSection(icon = Icons.Default.LocalPharmacy, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "Treatment Options") {
                         guide.treatments.forEach { treatment ->
-                            Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                            Row(modifier = Modifier.padding(vertical = 4.dp).semantics { contentDescription = "Treatment: $treatment" }, verticalAlignment = Alignment.Top) {
                                 Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(guide.color).padding(top = 7.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(treatment, fontSize = 13.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                                Text(treatment, fontSize = settings.textBase.sp, color = Color(0xFF374151), lineHeight = 20.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Disclaimer
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFF7ED)).padding(12.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        Text("⚕️", fontSize = 14.sp)
+                        Text("⚕️", fontSize = settings.textMd.sp)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("This guide is for informational purposes only. Always consult a licensed dermatologist for proper diagnosis and treatment.", fontSize = 12.sp, color = Color(0xFF92400E), lineHeight = 18.sp)
+                        Text("This guide is for informational purposes only. Always consult a licensed dermatologist for proper diagnosis and treatment.", fontSize = settings.textBase.sp, color = Color(0xFF92400E), lineHeight = 18.sp)
                     }
 
                     Spacer(modifier = Modifier.height(32.dp))
@@ -243,19 +226,15 @@ fun CareGuideScreen(navController: NavController) {
 
 @Composable
 fun CareSection(icon: ImageVector, iconBg: Color, iconTint: Color, title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
+    val settings = LocalAppSettings.current
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
                     Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
                 }
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                Text(title, fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
             }
             Spacer(modifier = Modifier.height(12.dp))
             content()

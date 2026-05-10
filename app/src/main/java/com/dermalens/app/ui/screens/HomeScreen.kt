@@ -23,8 +23,8 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dermalens.app.navigation.Screen
+import com.dermalens.app.ui.LocalAppSettings
 
-// ── Bottom Nav Items ──────────────────────────────────────────────────────────
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: String) {
     object Home : BottomNavItem(Screen.Home.route, Icons.Default.Home, "Home")
     object Scan : BottomNavItem(Screen.Scan.route, Icons.Default.CameraAlt, "Scan")
@@ -32,24 +32,23 @@ sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: 
     object Profile : BottomNavItem(Screen.Profile.route, Icons.Default.Person, "Profile")
 }
 
-val bottomNavItems = listOf(
-    BottomNavItem.Home,
-    BottomNavItem.Scan,
-    BottomNavItem.Progress,
-    BottomNavItem.Profile
-)
+val bottomNavItems = listOf(BottomNavItem.Home, BottomNavItem.Scan, BottomNavItem.Progress, BottomNavItem.Profile)
 
 @Composable
 fun DermaBottomNavBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val settings = LocalAppSettings.current
 
-    NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
+    NavigationBar(
+        containerColor = if (settings.highContrast) Color.White else Color.White,
+        tonalElevation = 8.dp
+    ) {
         bottomNavItems.forEach { item ->
             val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
             NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.label, tint = if (selected) DermaGreen else Color(0xFF9CA3AF)) },
-                label = { Text(item.label, color = if (selected) DermaGreen else Color(0xFF9CA3AF), fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+                icon = { Icon(item.icon, contentDescription = item.label, tint = if (selected) DermaGreen else if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF)) },
+                label = { Text(item.label, color = if (selected) DermaGreen else if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF), fontSize = settings.textSm.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
                 selected = selected,
                 onClick = {
                     navController.navigate(item.route) {
@@ -79,18 +78,17 @@ val scanningTips = listOf(
 fun HomeScreen(navController: NavController) {
     val tipIndex = remember { (scanningTips.indices).random() }
     val tip = scanningTips[tipIndex]
+    val settings = LocalAppSettings.current
 
-    Scaffold(
-        bottomBar = { DermaBottomNavBar(navController) }
-    ) { innerPadding ->
+    Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .background(Color(0xFFF8F9FA))
+                .background(if (settings.highContrast) Color.White else Color(0xFFF8F9FA))
         ) {
-            // ── Header ────────────────────────────────────────────────────────
+            // Header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -98,57 +96,45 @@ fun HomeScreen(navController: NavController) {
                     .padding(horizontal = 20.dp, vertical = 28.dp)
             ) {
                 Column {
-                    Text("Welcome back! 👋", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
+                    Text("Welcome back! 👋", fontSize = settings.textMd.sp, color = Color.White.copy(alpha = 0.85f))
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("DermaLens", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("DermaLens", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text("Your personal skin health companion", fontSize = 13.sp, color = Color.White.copy(alpha = 0.75f))
+                    Text("Your personal skin health companion", fontSize = settings.textBase.sp, color = Color.White.copy(alpha = 0.75f))
                 }
                 Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color.White.copy(alpha = 0.15f))
-                        .align(Alignment.CenterEnd),
+                    modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f)).align(Alignment.CenterEnd),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.LocalHospital, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(40.dp))
+                    Icon(Icons.Default.LocalHospital, contentDescription = "DermaLens logo", tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(40.dp))
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Recent Scan ───────────────────────────────────────────────────
+            // Recent Scan
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text("Recent Scan", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+                Text("Recent Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
+                        .then(if (settings.highContrast) Modifier.border(1.5.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
+                    colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
+                    elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(DermaGreenLight),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(26.dp))
+                        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(DermaGreenLight), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.DocumentScanner, contentDescription = "Scan icon", tint = DermaGreen, modifier = Modifier.size(26.dp))
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("No scans yet", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                            Text("No scans yet", fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text("Start your first skin scan today!", fontSize = 12.sp, color = Color(0xFF6B7280))
+                            Text("Start your first skin scan today!", fontSize = settings.textBase.sp, color = settings.textSecondary)
                         }
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(DermaGreenLight),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(18.dp))
+                        Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(DermaGreenLight), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Go to scan", tint = DermaGreen, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -156,9 +142,9 @@ fun HomeScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Quick Actions ─────────────────────────────────────────────────
+            // Quick Actions
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text("Quick Actions", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+                Text("Quick Actions", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuickActionCard(icon = Icons.Default.CameraAlt, label = "Scan Skin", color = DermaGreen, modifier = Modifier.weight(1f), onClick = { navController.navigate(Screen.Scan.route) })
@@ -173,44 +159,38 @@ fun HomeScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Tip of the Day ────────────────────────────────────────────────
+            // Tip of the Day
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text("Tip of the Day", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+                Text("Tip of the Day", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
+                        .then(if (settings.highContrast) Modifier.border(1.5.dp, DermaGreenDark, RoundedCornerShape(16.dp)) else Modifier),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DermaGreenLight),
+                    colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFCCFBF1) else DermaGreenLight),
                     elevation = CardDefaults.cardElevation(0.dp)
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                        Box(
-                            modifier = Modifier.size(38.dp).clip(CircleShape).background(DermaGreen),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(DermaGreen), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Lightbulb, contentDescription = "Tip", tint = Color.White, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(tip, fontSize = 13.sp, color = DermaGreenDark, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                        Text(tip, fontSize = settings.textBase.sp, color = if (settings.highContrast) Color(0xFF004D40) else DermaGreenDark, lineHeight = 20.sp, modifier = Modifier.weight(1f))
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ── Disclaimer ────────────────────────────────────────────────────
+            // Disclaimer
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
+                        .then(if (settings.highContrast) Modifier.border(1.5.dp, Color(0xFFE65100), RoundedCornerShape(12.dp)) else Modifier),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED))
+                    colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFFFE0B2) else Color(0xFFFFF7ED))
                 ) {
-                    Text(
-                        text = "⚕️ DermaLens is a diagnostic aid only. Always consult a licensed dermatologist for professional advice.",
-                        fontSize = 11.sp, color = Color(0xFF92400E),
-                        modifier = Modifier.padding(12.dp),
-                        textAlign = TextAlign.Center
-                    )
+                    Text("⚕️ DermaLens is a diagnostic aid only. Always consult a licensed dermatologist for professional advice.", fontSize = settings.textSm.sp, color = Color(0xFF92400E), modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -219,31 +199,21 @@ fun HomeScreen(navController: NavController) {
 }
 
 @Composable
-fun QuickActionCard(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
+fun QuickActionCard(icon: ImageVector, label: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val settings = LocalAppSettings.current
     Card(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier.clickable { onClick() }
+            .then(if (settings.highContrast) Modifier.border(1.5.dp, color, RoundedCornerShape(16.dp)) else Modifier),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
+        colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
+        elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(26.dp))
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = if (settings.highContrast) 0.2f else 0.1f)), contentAlignment = Alignment.Center) {
+                Icon(imageVector = icon, contentDescription = label, tint = color, modifier = Modifier.size(26.dp))
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827), textAlign = TextAlign.Center)
+            Text(text = label, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary, textAlign = TextAlign.Center)
         }
     }
 }

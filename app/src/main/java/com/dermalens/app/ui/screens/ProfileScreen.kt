@@ -126,6 +126,86 @@ fun ProfileScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+
+            // ── Accessibility Section ─────────────────────────────────────────────────
+            ProfileSectionHeader("Accessibility")
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
+            var highContrast by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_HIGH_CONTRAST, false)) }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Font Size
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF5F3FF)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.TextFields, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Font Size", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                            Text(
+                                when {
+                                    fontScale <= 0.85f -> "Small"
+                                    fontScale <= 1.0f -> "Normal"
+                                    fontScale <= 1.15f -> "Large"
+                                    else -> "Extra Large"
+                                },
+                                fontSize = 12.sp, color = Color(0xFF6B7280)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Slider(
+                        value = fontScale,
+                        onValueChange = {
+                            fontScale = it
+                            prefs.edit().putFloat(DermaPrefs.KEY_FONT_SIZE, it).apply()
+                        },
+                        valueRange = 0.75f..1.5f,
+                        steps = 2,
+                        colors = SliderDefaults.colors(thumbColor = DermaGreen, activeTrackColor = DermaGreen, inactiveTrackColor = DermaGreenLight),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Small", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                        Text("Normal", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                        Text("Large", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                        Text("XL", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFF3F4F6))
+
+                    // High Contrast
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFFEF3C7)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Contrast, contentDescription = "High contrast mode", tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("High Contrast", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                            Text(if (highContrast) "Enabled" else "Disabled", fontSize = 12.sp, color = Color(0xFF6B7280))
+                        }
+                        Switch(
+                            checked = highContrast,
+                            onCheckedChange = {
+                                highContrast = it
+                                prefs.edit().putBoolean(DermaPrefs.KEY_HIGH_CONTRAST, it).apply()
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = DermaGreen, uncheckedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFE5E7EB))
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Logout
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { showLogoutDialog = true },

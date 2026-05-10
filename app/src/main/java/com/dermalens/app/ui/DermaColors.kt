@@ -18,4 +18,6 @@ object DermaPrefs {
     const val KEY_IS_LOGGED_IN = "is_logged_in"
     const val KEY_USER_EMAIL = "user_email"
     const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding"
+    const val KEY_FONT_SIZE = "font_size"
+    const val KEY_HIGH_CONTRAST = "high_contrast"
 }
