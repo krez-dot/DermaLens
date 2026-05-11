@@ -26,6 +26,7 @@ import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
 import androidx.compose.runtime.LaunchedEffect
 import com.dermalens.app.data.db.DermaDatabase
+import com.dermalens.app.worker.NotificationScheduler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,6 +225,22 @@ fun ProfileScreen(navController: NavController) {
                     Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Logout", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                }
+            }
+
+            // Test notification button - remove after testing!
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp).clickable {
+                    NotificationScheduler.scheduleTestReminder(context)
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = DermaGreenLight),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Test Notification (5 sec)", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = DermaGreen)
                 }
             }
 
