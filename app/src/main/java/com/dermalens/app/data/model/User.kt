@@ -16,4 +16,5 @@ data class User(
     val passwordHash: String,
     val createdAt: Long = System.currentTimeMillis(),
     val notificationEnabled: Boolean = true
+
 )

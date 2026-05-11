@@ -22,6 +22,12 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.dermalens.app.data.db.DermaDatabase
+import com.dermalens.app.data.model.ScanRecord
+import com.dermalens.app.ui.screens.DermaPrefs
+import kotlinx.coroutines.launch
 
 data class DetectionResult(
     val condition: String,
@@ -66,6 +72,9 @@ fun ScanResultScreen(navController: NavController) {
     val result = remember { mockDetectionResults.random() }
     var isSaved by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
 
     Scaffold(
         topBar = {
@@ -192,7 +201,28 @@ fun ScanResultScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
-                    onClick = { isSaved = true },
+                    onClick = {
+                        if (!isSaved) {
+                            scope.launch {
+                                val db = DermaDatabase.getDatabase(context)
+                                val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                                val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+                                val user = db.userDao().getUserByEmail(savedEmail)
+                                if (user != null) {
+                                    db.scanRecordDao().insertScan(
+                                        ScanRecord(
+                                            userId = user.userId,
+                                            condition = result.condition,
+                                            confidence = result.confidence,
+                                            severity = result.severity,
+                                            notes = "Scanned on ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date())}"
+                                        )
+                                    )
+                                }
+                                isSaved = true
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = if (isSaved) "Scan saved to history" else "Save scan to history" },
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else Color(0xFF0284C7))

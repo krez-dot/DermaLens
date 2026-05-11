@@ -4,16 +4,13 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.data.model.User
 
-@Database(
-    entities = [User::class],
-    version = 1,
-    exportSchema = false
-)
+@Database(entities = [User::class, ScanRecord::class], version = 2, exportSchema = false)
 abstract class DermaDatabase : RoomDatabase() {
-
     abstract fun userDao(): UserDao
+    abstract fun scanRecordDao(): ScanRecordDao
 
     companion object {
         @Volatile
@@ -25,7 +22,9 @@ abstract class DermaDatabase : RoomDatabase() {
                     context.applicationContext,
                     DermaDatabase::class.java,
                     "dermalens_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

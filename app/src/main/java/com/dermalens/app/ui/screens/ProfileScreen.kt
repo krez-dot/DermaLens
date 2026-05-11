@@ -23,68 +23,96 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
+import com.dermalens.app.ui.LocalAppSettings
+import androidx.compose.runtime.LaunchedEffect
+import com.dermalens.app.data.db.DermaDatabase
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
+    val settings = LocalAppSettings.current
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(true) }
 
-    val userName = "Mark Joseph Garcia"
-    val userEmail = "mjgar@tsu.edu.ph"
+    val db = remember { DermaDatabase.getDatabase(context) }
+    var userName by remember { mutableStateOf("User") }
+    var userEmail by remember { mutableStateOf("") }
     val memberSince = "May 2026"
     val totalScans = 6
     val conditions = 3
 
+    val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
+    var highContrast by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_HIGH_CONTRAST, false)) }
+
+    LaunchedEffect(Unit) {
+        val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+        val user = db.userDao().getUserByEmail(savedEmail)
+        if (user != null) {
+            userName = user.fullName
+            userEmail = user.email
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Profile", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = Color(0xFF111827))
+                title = { Text("My Profile", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = settings.textPrimary)
             )
         },
         bottomBar = { DermaBottomNavBar(navController) }
     ) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).verticalScroll(rememberScrollState()).background(Color(0xFFF8F9FA))
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .background(if (settings.highContrast) Color.White else Color(0xFFF8F9FA))
         ) {
             // Header
             Box(
-                modifier = Modifier.fillMaxWidth().background(Brush.verticalGradient(colors = listOf(DermaGreen, DermaGreenDark))).padding(24.dp),
+                modifier = Modifier.fillMaxWidth()
+                    .background(Brush.verticalGradient(colors = listOf(DermaGreen, DermaGreenDark)))
+                    .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
-                        modifier = Modifier.size(88.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).border(2.5.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+                        modifier = Modifier.size(88.dp).clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.2f))
+                            .border(if (settings.highContrast) 3.dp else 2.5.dp, Color.White, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(userName.split(" ").take(2).map { it.first() }.joinToString(""), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(userName, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(userName, fontSize = settings.textXl.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(userEmail, fontSize = 13.sp, color = Color.White.copy(alpha = 0.8f))
+                    Text(userEmail, fontSize = settings.textBase.sp, color = Color.White.copy(alpha = 0.8f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Box(modifier = Modifier.background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 5.dp)) {
-                        Text("Member since $memberSince", fontSize = 12.sp, color = Color.White)
+                        Text("Member since $memberSince", fontSize = settings.textBase.sp, color = Color.White)
                     }
                 }
             }
 
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             // Stats
             Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).offset(y = (-1).dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).offset(y = (-1).dp)
+                    .then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(4.dp)
+                colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
+                elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 4.dp)
             ) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     ProfileStatItem("$totalScans", "Total Scans", "📷")
-                    VerticalDivider(modifier = Modifier.height(40.dp), color = Color(0xFFF3F4F6))
+                    VerticalDivider(modifier = Modifier.height(40.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                     ProfileStatItem("$conditions", "Conditions", "🔍")
-                    VerticalDivider(modifier = Modifier.height(40.dp), color = Color(0xFFF3F4F6))
+                    VerticalDivider(modifier = Modifier.height(40.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                     ProfileStatItem("12", "Days Active", "📅")
                 }
             }
@@ -96,7 +124,7 @@ fun ProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.Edit, iconBg = DermaGreenLight, iconTint = DermaGreen, title = "Edit Profile", subtitle = "Update your name and email", onClick = { navController.navigate(Screen.EditProfile.route) })
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF3F4F6))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItemSwitch(icon = Icons.Default.Notifications, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "Scan Reminders", subtitle = if (notificationsEnabled) "Reminders are ON" else "Reminders are OFF", checked = notificationsEnabled, onCheckedChange = { notificationsEnabled = it })
             }
 
@@ -107,9 +135,9 @@ fun ProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.History, iconBg = Color(0xFFF5F3FF), iconTint = Color(0xFF7C3AED), title = "Scan History", subtitle = "View all your past scans", onClick = { navController.navigate(Screen.ProgressTracker.route) })
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF3F4F6))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItem(icon = Icons.Default.MenuBook, iconBg = Color(0xFFFEF3C7), iconTint = Color(0xFFD97706), title = "Care Guide", subtitle = "Skincare tips for all conditions", onClick = { navController.navigate(Screen.CareGuide.route) })
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF3F4F6))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItem(icon = Icons.Default.LocationOn, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Find Clinics", subtitle = "Locate nearby dermatologists", onClick = { navController.navigate(Screen.ClinicLocator.route) })
             }
 
@@ -120,84 +148,62 @@ fun ProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.Info, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "About DermaLens", subtitle = "Version 1.0.0 — Capstone 2026", onClick = { showAboutDialog = true })
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF3F4F6))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItem(icon = Icons.Default.Shield, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Privacy Policy", subtitle = "How we handle your data")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-
-            // ── Accessibility Section ─────────────────────────────────────────────────
+            // Accessibility Section
             ProfileSectionHeader("Accessibility")
             Spacer(modifier = Modifier.height(8.dp))
-
-            val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
-            var highContrast by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_HIGH_CONTRAST, false)) }
-
             Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(14.dp)) else Modifier),
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
+                elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    // Font Size
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF5F3FF)), contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.TextFields, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Font Size", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
-                            Text(
-                                when {
-                                    fontScale <= 0.85f -> "Small"
-                                    fontScale <= 1.0f -> "Normal"
-                                    fontScale <= 1.15f -> "Large"
-                                    else -> "Extra Large"
-                                },
-                                fontSize = 12.sp, color = Color(0xFF6B7280)
-                            )
+                            Text("Font Size", fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+                            Text(when { fontScale <= 0.85f -> "Small"; fontScale <= 1.0f -> "Normal"; fontScale <= 1.15f -> "Large"; else -> "Extra Large" }, fontSize = settings.textBase.sp, color = settings.textSecondary)
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Slider(
                         value = fontScale,
-                        onValueChange = {
-                            fontScale = it
-                            prefs.edit().putFloat(DermaPrefs.KEY_FONT_SIZE, it).apply()
-                        },
+                        onValueChange = { fontScale = it; prefs.edit().putFloat(DermaPrefs.KEY_FONT_SIZE, it).apply() },
                         valueRange = 0.75f..1.5f,
                         steps = 2,
                         colors = SliderDefaults.colors(thumbColor = DermaGreen, activeTrackColor = DermaGreen, inactiveTrackColor = DermaGreenLight),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Small", fontSize = 11.sp, color = Color(0xFF9CA3AF))
-                        Text("Normal", fontSize = 11.sp, color = Color(0xFF9CA3AF))
-                        Text("Large", fontSize = 11.sp, color = Color(0xFF9CA3AF))
-                        Text("XL", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                        listOf("Small", "Normal", "Large", "XL").forEach {
+                            Text(it, fontSize = settings.textSm.sp, color = settings.textSecondary)
+                        }
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFF3F4F6))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
 
-                    // High Contrast
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFFEF3C7)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Contrast, contentDescription = "High contrast mode", tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Contrast, contentDescription = "High contrast", tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("High Contrast", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
-                            Text(if (highContrast) "Enabled" else "Disabled", fontSize = 12.sp, color = Color(0xFF6B7280))
+                            Text("High Contrast", fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+                            Text(if (highContrast) "Enabled" else "Disabled", fontSize = settings.textBase.sp, color = settings.textSecondary)
                         }
                         Switch(
                             checked = highContrast,
-                            onCheckedChange = {
-                                highContrast = it
-                                prefs.edit().putBoolean(DermaPrefs.KEY_HIGH_CONTRAST, it).apply()
-                            },
+                            onCheckedChange = { highContrast = it; prefs.edit().putBoolean(DermaPrefs.KEY_HIGH_CONTRAST, it).apply() },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = DermaGreen, uncheckedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFE5E7EB))
                         )
                     }
@@ -208,20 +214,21 @@ fun ProfileScreen(navController: NavController) {
 
             // Logout
             Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { showLogoutDialog = true },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { showLogoutDialog = true }
+                    .then(if (settings.highContrast) Modifier.border(1.dp, Color(0xFFDC2626), RoundedCornerShape(14.dp)) else Modifier),
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFFECACA) else Color(0xFFFEF2F2)),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Logout", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                    Text("Logout", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text("⚕️ DermaLens is a capstone project by Tarlac State University.\nFor educational and research purposes only.", fontSize = 11.sp, color = Color(0xFF9CA3AF), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), lineHeight = 16.sp)
+            Text("⚕️ DermaLens is a capstone project by Tarlac State University.\nFor educational and research purposes only.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), lineHeight = 16.sp)
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -231,26 +238,21 @@ fun ProfileScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
             icon = { Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFDC2626)) },
-            title = { Text("Logout", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to logout from DermaLens?", color = Color(0xFF374151)) },
+            title = { Text("Logout", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
+            text = { Text("Are you sure you want to logout from DermaLens?", color = settings.textPrimary, fontSize = settings.textMd.sp) },
             confirmButton = {
                 Button(
                     onClick = {
                         showLogoutDialog = false
-                        context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                            .edit()
-                            .putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, false)
-                            .apply()
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(Screen.Home.route) { inclusive = true }
-                        }
+                        context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE).edit().putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, false).apply()
+                        navController.navigate(Screen.Login.route) { popUpTo(Screen.Home.route) { inclusive = true } }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                     shape = RoundedCornerShape(10.dp)
-                ) { Text("Logout") }
+                ) { Text("Logout", fontSize = settings.textMd.sp) }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showLogoutDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
+                OutlinedButton(onClick = { showLogoutDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Cancel", fontSize = settings.textMd.sp) }
             },
             shape = RoundedCornerShape(16.dp)
         )
@@ -261,22 +263,22 @@ fun ProfileScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
             icon = { Icon(Icons.Default.LocalHospital, contentDescription = null, tint = DermaGreen) },
-            title = { Text("DermaLens", fontWeight = FontWeight.Bold, color = DermaGreen) },
+            title = { Text("DermaLens", fontWeight = FontWeight.Bold, color = DermaGreen, fontSize = settings.textXl.sp) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Version 1.0.0", fontSize = 12.sp, color = Color(0xFF9CA3AF))
+                    Text("Version 1.0.0", fontSize = settings.textBase.sp, color = settings.textSecondary)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("An Android-based skin disease detection system using YOLOv11 TFLite. Developed as a Capstone Project at Tarlac State University, 2026.", fontSize = 13.sp, color = Color(0xFF374151), textAlign = TextAlign.Center, lineHeight = 20.sp)
+                    Text("An Android-based skin disease detection system using YOLOv11 TFLite. Developed as a Capstone Project at Tarlac State University, 2026.", fontSize = settings.textBase.sp, color = settings.textPrimary, textAlign = TextAlign.Center, lineHeight = 20.sp)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Developed by:", fontSize = 12.sp, color = Color(0xFF9CA3AF))
+                    Text("Developed by:", fontSize = settings.textBase.sp, color = settings.textSecondary)
                     Spacer(modifier = Modifier.height(4.dp))
                     listOf("Mark Joseph Garcia", "Reynaldo Manio Jr.", "Reicee Owen Pastrana", "Chrisent Dayniel Tolentino").forEach {
-                        Text(it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                        Text(it, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showAboutDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = DermaGreen), shape = RoundedCornerShape(10.dp)) { Text("Close") }
+                Button(onClick = { showAboutDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = DermaGreen), shape = RoundedCornerShape(10.dp)) { Text("Close", fontSize = settings.textMd.sp) }
             },
             shape = RoundedCornerShape(16.dp)
         )
@@ -287,6 +289,7 @@ fun ProfileScreen(navController: NavController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(navController: NavController) {
+    val settings = LocalAppSettings.current
     var name by remember { mutableStateOf("Mark Joseph Garcia") }
     var email by remember { mutableStateOf("mjgar@tsu.edu.ph") }
     var isSaved by remember { mutableStateOf(false) }
@@ -294,36 +297,37 @@ fun EditProfileScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Edit Profile", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = Color(0xFF111827))
+                title = { Text("Edit Profile", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
+                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Go back") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = settings.textPrimary)
             )
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp).verticalScroll(rememberScrollState()).background(settings.background),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
             Box(
-                modifier = Modifier.size(88.dp).clip(CircleShape).background(DermaGreenLight).border(2.5.dp, DermaGreen, CircleShape),
+                modifier = Modifier.size(88.dp).clip(CircleShape).background(DermaGreenLight)
+                    .border(if (settings.highContrast) 3.dp else 2.5.dp, DermaGreen, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(name.split(" ").take(2).map { it.first() }.joinToString(""), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = DermaGreen)
             }
             Spacer(modifier = Modifier.height(24.dp))
-            OutlinedTextField(value = name, onValueChange = { name = it; isSaved = false }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = Color(0xFFE5E7EB), unfocusedLabelColor = Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
+            OutlinedTextField(value = name, onValueChange = { name = it; isSaved = false }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB), unfocusedLabelColor = if (settings.highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(value = email, onValueChange = { email = it; isSaved = false }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = Color(0xFFE5E7EB), unfocusedLabelColor = Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
+            OutlinedTextField(value = email, onValueChange = { email = it; isSaved = false }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB), unfocusedLabelColor = if (settings.highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = { isSaved = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else DermaGreen)) {
                 Icon(if (isSaved) Icons.Default.Check else Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isSaved) "Saved!" else "Save Changes", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (isSaved) "Saved!" else "Save Changes", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(modifier = Modifier.height(10.dp))
-            OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.5.dp, Color(0xFFE5E7EB))) {
-                Text("Cancel", color = Color(0xFF374151))
+            OutlinedButton(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.5.dp, if (settings.highContrast) Color.Black else Color(0xFFE5E7EB))) {
+                Text("Cancel", color = settings.textPrimary, fontSize = settings.textLg.sp)
             }
         }
     }
@@ -332,52 +336,63 @@ fun EditProfileScreen(navController: NavController) {
 // ── Helper Composables ────────────────────────────────────────────────────────
 @Composable
 fun ProfileSectionHeader(title: String) {
-    Text(title.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF9CA3AF), letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 16.dp))
+    val settings = LocalAppSettings.current
+    Text(title.uppercase(), fontSize = settings.textSm.sp, fontWeight = FontWeight.Bold, color = settings.textSecondary, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 16.dp))
 }
 
 @Composable
 fun ProfileStatItem(value: String, label: String, icon: String) {
+    val settings = LocalAppSettings.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(icon, fontSize = 20.sp)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DermaGreen)
-        Text(label, fontSize = 11.sp, color = Color(0xFF6B7280))
+        Text(value, fontSize = settings.textXxl.sp, fontWeight = FontWeight.Bold, color = DermaGreen)
+        Text(label, fontSize = settings.textSm.sp, color = settings.textSecondary)
     }
 }
 
 @Composable
 fun ProfileMenuCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    val settings = LocalAppSettings.current
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            .then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(14.dp)) else Modifier),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
+        elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
+    ) {
         Column { content() }
     }
 }
 
 @Composable
 fun ProfileMenuItem(icon: ImageVector, iconBg: Color, iconTint: Color, title: String, subtitle: String, onClick: () -> Unit = {}) {
+    val settings = LocalAppSettings.current
     Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
-            Text(subtitle, fontSize = 12.sp, color = Color(0xFF6B7280))
+            Text(title, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+            Text(subtitle, fontSize = settings.textBase.sp, color = settings.textSecondary)
         }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFFD1D5DB), modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = if (settings.highContrast) Color(0xFF666666) else Color(0xFFD1D5DB), modifier = Modifier.size(18.dp))
     }
 }
 
 @Composable
 fun ProfileMenuItemSwitch(icon: ImageVector, iconBg: Color, iconTint: Color, title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val settings = LocalAppSettings.current
     Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
-            Text(subtitle, fontSize = 12.sp, color = Color(0xFF6B7280))
+            Text(title, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+            Text(subtitle, fontSize = settings.textBase.sp, color = settings.textSecondary)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = DermaGreen, uncheckedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFE5E7EB)))
+        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = DermaGreen, uncheckedThumbColor = Color.White, uncheckedTrackColor = if (settings.highContrast) Color(0xFF888888) else Color(0xFFE5E7EB)))
     }
 }
