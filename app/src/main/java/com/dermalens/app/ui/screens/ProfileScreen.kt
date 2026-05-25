@@ -344,7 +344,7 @@ fun EditProfileScreen(navController: NavController) {
                     .border(if (settings.highContrast) 3.dp else 2.5.dp, DermaGreen, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(name.split(" ").take(2).map { it.first() }.joinToString(""), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = DermaGreen)
+                Text(name.split(" ").filter { it.isNotEmpty() }.take(2).map { it.first() }.joinToString("").ifEmpty { "?" }, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = DermaGreen)
             }
             Spacer(modifier = Modifier.height(24.dp))
             OutlinedTextField(value = name, onValueChange = { name = it; isSaved = false }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB), unfocusedLabelColor = if (settings.highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
