@@ -261,7 +261,10 @@ fun ProfileScreen(navController: NavController) {
             dismissButton = {
                 OutlinedButton(onClick = { showLogoutDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Cancel", fontSize = settings.textMd.sp) }
             },
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
         )
     }
 
@@ -273,21 +276,24 @@ fun ProfileScreen(navController: NavController) {
             title = { Text("DermaLens", fontWeight = FontWeight.Bold, color = DermaGreen, fontSize = settings.textXl.sp) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Version 1.0.0", fontSize = settings.textBase.sp, color = settings.textSecondary)
+                    Text("Version 1.0.0", fontSize = settings.textBase.sp, color = Color(0xFF6B7280))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("An Android-based skin disease detection system using YOLOv11 TFLite. Developed as a Capstone Project at Tarlac State University, 2026.", fontSize = settings.textBase.sp, color = settings.textPrimary, textAlign = TextAlign.Center, lineHeight = 20.sp)
+                    Text("An Android-based skin disease detection system using YOLOv11 TFLite. Developed as a Capstone Project at Tarlac State University, 2026.", fontSize = settings.textBase.sp, color = Color(0xFF374151), textAlign = TextAlign.Center, lineHeight = 20.sp)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Developed by:", fontSize = settings.textBase.sp, color = settings.textSecondary)
+                    Text("Developed by:", fontSize = settings.textBase.sp, color = Color(0xFF6B7280))
                     Spacer(modifier = Modifier.height(4.dp))
                     listOf("Mark Joseph Garcia", "Reynaldo Manio Jr.", "Reicee Owen Pastrana", "Chrisent Dayniel Tolentino").forEach {
-                        Text(it, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+                        Text(it, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
                     }
                 }
             },
             confirmButton = {
                 Button(onClick = { showAboutDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = DermaGreen), shape = RoundedCornerShape(10.dp)) { Text("Close", fontSize = settings.textMd.sp) }
             },
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
         )
     }
 }
