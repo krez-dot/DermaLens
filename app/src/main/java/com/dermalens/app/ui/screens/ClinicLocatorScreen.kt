@@ -246,6 +246,7 @@ fun ClinicLocatorScreen(navController: NavController) {
     }
 
     var routes by remember { mutableStateOf<Map<String, List<GeoPoint>>>(emptyMap()) }
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -361,72 +362,100 @@ fun ClinicLocatorScreen(navController: NavController) {
             }
 
             if (showMap) {
-                AndroidView(
-                    factory = { ctx ->
-                        Configuration.getInstance().apply {
-                            userAgentValue = ctx.packageName
-                            osmdroidBasePath = ctx.cacheDir
-                            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid")
-                        }
-                        MapView(ctx).apply {
-                            val cartoTiles = XYTileSource(
-                                "CartoDB",
-                                0, 19, 256, ".png",
-                                arrayOf(
-                                    "https://a.basemaps.cartocdn.com/light_all/",
-                                    "https://b.basemaps.cartocdn.com/light_all/",
-                                    "https://c.basemaps.cartocdn.com/light_all/"
-                                ),
-                                "© CartoDB © OpenStreetMap contributors"
-                            )
-                            setTileSource(cartoTiles)
-                            setMultiTouchControls(true)
-                            controller.setZoom(14.5)
-                            controller.setCenter(GeoPoint(userLat, userLng))
-                        }
-                    },
-                    update = { mapView ->
-                        val ctx = mapView.context
-                        val dp = ctx.resources.displayMetrics.density
-                        val markerIcon = createMarkerDrawable(ctx)
-                        val userDot = createUserDotDrawable(ctx)
-                        mapView.overlays.clear()
-                        if (!mapCentered) {
-                            mapView.controller.setCenter(GeoPoint(userLat, userLng))
-                            mapCentered = true
-                        }
-                        // User location dot
-                        val userMarker = Marker(mapView).apply {
-                            position = GeoPoint(userLat, userLng)
-                            title = "You are here"
-                            icon = userDot
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        }
-                        mapView.overlays.add(userMarker)
-                        // Road route + clinic marker for each clinic
-                        clinics.forEach { clinic ->
-                            val routePoints = routes[clinic.name]
-                                ?: listOf(GeoPoint(userLat, userLng), GeoPoint(clinic.lat, clinic.lng))
-                            val route = Polyline(mapView).apply {
-                                setPoints(routePoints)
-                                outlinePaint.color = 0xFF7C3AED.toInt()
-                                outlinePaint.strokeWidth = 4f * dp
-                                outlinePaint.alpha = 200
+                Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                    AndroidView(
+                        factory = { ctx ->
+                            Configuration.getInstance().apply {
+                                userAgentValue = ctx.packageName
+                                osmdroidBasePath = ctx.cacheDir
+                                osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid")
                             }
-                            mapView.overlays.add(route)
-                            val marker = Marker(mapView).apply {
-                                position = GeoPoint(clinic.lat, clinic.lng)
-                                title = clinic.name
-                                snippet = clinic.address
-                                icon = markerIcon
-                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            MapView(ctx).apply {
+                                val cartoTiles = XYTileSource(
+                                    "CartoDB",
+                                    0, 19, 256, ".png",
+                                    arrayOf(
+                                        "https://a.basemaps.cartocdn.com/light_all/",
+                                        "https://b.basemaps.cartocdn.com/light_all/",
+                                        "https://c.basemaps.cartocdn.com/light_all/"
+                                    ),
+                                    "© CartoDB © OpenStreetMap contributors"
+                                )
+                                setTileSource(cartoTiles)
+                                setMultiTouchControls(true)
+                                zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+                                controller.setZoom(14.5)
+                                controller.setCenter(GeoPoint(userLat, userLng))
+                            }.also { mapViewRef = it }
+                        },
+                        update = { mapView ->
+                            val ctx = mapView.context
+                            val dp = ctx.resources.displayMetrics.density
+                            val markerIcon = createMarkerDrawable(ctx)
+                            val userDot = createUserDotDrawable(ctx)
+                            mapView.overlays.clear()
+                            if (!mapCentered) {
+                                mapView.controller.setCenter(GeoPoint(userLat, userLng))
+                                mapCentered = true
                             }
-                            mapView.overlays.add(marker)
+                            val userMarker = Marker(mapView).apply {
+                                position = GeoPoint(userLat, userLng)
+                                title = "You are here"
+                                icon = userDot
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            }
+                            mapView.overlays.add(userMarker)
+                            clinics.forEach { clinic ->
+                                val routePoints = routes[clinic.name]
+                                    ?: listOf(GeoPoint(userLat, userLng), GeoPoint(clinic.lat, clinic.lng))
+                                val route = Polyline(mapView).apply {
+                                    setPoints(routePoints)
+                                    outlinePaint.color = 0xFF7C3AED.toInt()
+                                    outlinePaint.strokeWidth = 4f * dp
+                                    outlinePaint.alpha = 200
+                                }
+                                mapView.overlays.add(route)
+                                val marker = Marker(mapView).apply {
+                                    position = GeoPoint(clinic.lat, clinic.lng)
+                                    title = clinic.name
+                                    snippet = clinic.address
+                                    icon = markerIcon
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                                }
+                                mapView.overlays.add(marker)
+                            }
+                            mapView.invalidate()
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.size(40.dp).clickable { mapViewRef?.controller?.zoomIn() },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(4.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Add, contentDescription = "Zoom in", tint = DermaGreen, modifier = Modifier.size(20.dp))
+                            }
                         }
-                        mapView.invalidate()
-                    },
-                    modifier = Modifier.fillMaxWidth().height(300.dp)
-                )
+                        Card(
+                            modifier = Modifier.size(40.dp).clickable { mapViewRef?.controller?.zoomOut() },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(4.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Remove, contentDescription = "Zoom out", tint = DermaGreen, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
 
                 // Clinic cards below map
                 LazyColumn(
