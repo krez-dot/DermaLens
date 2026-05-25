@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -62,7 +63,7 @@ fun CameraPreviewScreen(navController: NavController) {
     var isFrontCamera by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) navController.navigate(Screen.ScanResult.route) }
 
     val previewView = remember { PreviewView(context) }
@@ -192,7 +193,7 @@ fun CameraPreviewScreen(navController: NavController) {
 
                 // Gallery
                 IconButton(
-                    onClick = { galleryLauncher.launch("image/*") },
+                    onClick = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
                 ) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery", tint = Color.White, modifier = Modifier.size(24.dp))
