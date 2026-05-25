@@ -18,11 +18,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -220,6 +223,7 @@ fun RegisterScreen(navController: NavController) {
     var confirmPasswordError by remember { mutableStateOf("") }
     var registerError by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
 
     fun validate(): Boolean {
         var valid = true
@@ -308,7 +312,47 @@ fun RegisterScreen(navController: NavController) {
                     Text("Sign In", fontSize = settings.textMd.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(onClick = { showPrivacyDialog = true }, contentPadding = PaddingValues(0.dp)) {
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = settings.textSecondary)) { append("By registering, you agree to our ") }
+                        withStyle(SpanStyle(color = DermaGreen, fontWeight = FontWeight.SemiBold)) { append("Privacy Policy") }
+                    },
+                    fontSize = settings.textSm.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("⚕️ For diagnostic reference only. Always consult a licensed dermatologist.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, lineHeight = 16.sp)
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (showPrivacyDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyDialog = false },
+            containerColor = Color.White,
+            title = { Text("Privacy Policy", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    PrivacySection("Data We Collect", "We collect your name, email address, and skin scan images you choose to submit. Scan results including condition, severity, and confidence scores are stored locally on your device.")
+                    PrivacySection("How We Use Your Data", "Your data is used solely to provide personalized skin health tracking within the app. If you enable 'Contribute to Research', anonymized scan data may be used to improve our detection model.")
+                    PrivacySection("Data Storage", "All personal data is stored locally on your device using encrypted storage. We do not sell, rent, or share your personal information with third parties.")
+                    PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed data is anonymized before use.")
+                    PrivacySection("Your Rights", "You may delete your account and all associated data at any time. Scan records can be individually deleted from the Progress Tracker.")
+                    PrivacySection("Medical Disclaimer", "DermaLens is for informational reference only and does not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")
+                    PrivacySection("Contact", "For privacy concerns, contact us through the app's feedback channel.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPrivacyDialog = false }) {
+                    Text("Close", color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
     }
 }
