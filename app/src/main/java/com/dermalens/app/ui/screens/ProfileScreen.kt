@@ -40,9 +40,10 @@ fun ProfileScreen(navController: NavController) {
     val db = remember { DermaDatabase.getDatabase(context) }
     var userName by remember { mutableStateOf("User") }
     var userEmail by remember { mutableStateOf("") }
-    val memberSince = "May 2026"
-    val totalScans = 6
-    val conditions = 3
+    var memberSince by remember { mutableStateOf("") }
+    var totalScans by remember { mutableStateOf(0) }
+    var conditions by remember { mutableStateOf(0) }
+    var daysActive by remember { mutableStateOf(0) }
 
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
     var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
@@ -54,6 +55,10 @@ fun ProfileScreen(navController: NavController) {
         if (user != null) {
             userName = user.fullName
             userEmail = user.email
+            memberSince = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(user.createdAt))
+            totalScans = db.scanRecordDao().getScanCount(user.userId)
+            conditions = db.scanRecordDao().getConditionsByUser(user.userId).size
+            daysActive = ((System.currentTimeMillis() - user.createdAt) / (1000L * 60L * 60L * 24L)).toInt() + 1
         }
     }
 
@@ -114,7 +119,7 @@ fun ProfileScreen(navController: NavController) {
                     VerticalDivider(modifier = Modifier.height(40.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                     ProfileStatItem("$conditions", "Conditions", "🔍")
                     VerticalDivider(modifier = Modifier.height(40.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                    ProfileStatItem("12", "Days Active", "📅")
+                    ProfileStatItem("$daysActive", "Days Active", "📅")
                 }
             }
 
@@ -228,22 +233,6 @@ fun ProfileScreen(navController: NavController) {
                 }
             }
 
-            // Test notification button - remove after testing!
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp).clickable {
-                    NotificationScheduler.scheduleTestReminder(context)
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DermaGreenLight),
-                elevation = CardDefaults.cardElevation(0.dp)
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.Notifications, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Test Notification (5 sec)", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = DermaGreen)
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
             Text("⚕️ DermaLens is a capstone project by Tarlac State University.\nFor educational and research purposes only.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), lineHeight = 16.sp)
             Spacer(modifier = Modifier.height(24.dp))
@@ -307,9 +296,22 @@ fun ProfileScreen(navController: NavController) {
 @Composable
 fun EditProfileScreen(navController: NavController) {
     val settings = LocalAppSettings.current
-    var name by remember { mutableStateOf("Mark Joseph Garcia") }
-    var email by remember { mutableStateOf("mjgar@tsu.edu.ph") }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
     var isSaved by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val db = DermaDatabase.getDatabase(context)
+        val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+        val user = db.userDao().getUserByEmail(savedEmail)
+        if (user != null) {
+            name = user.fullName
+            email = user.email
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -337,7 +339,19 @@ fun EditProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(value = email, onValueChange = { email = it; isSaved = false }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB), unfocusedLabelColor = if (settings.highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
             Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = { isSaved = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else DermaGreen)) {
+            Button(onClick = {
+                scope.launch {
+                    val db = DermaDatabase.getDatabase(context)
+                    val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                    val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+                    val user = db.userDao().getUserByEmail(savedEmail)
+                    if (user != null) {
+                        db.userDao().updateProfile(user.userId, name.trim(), email.trim())
+                        prefs.edit().putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
+                    }
+                    isSaved = true
+                }
+            }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else DermaGreen)) {
                 Icon(if (isSaved) Icons.Default.Check else Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(if (isSaved) "Saved!" else "Save Changes", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)

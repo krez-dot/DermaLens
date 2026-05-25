@@ -75,7 +75,8 @@ fun ProgressTrackerScreen(navController: NavController) {
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
 
     var totalScans by remember { mutableStateOf(0) }
-    var conditionTracks by remember { mutableStateOf(mockProgressData) }
+    var daysTracked by remember { mutableStateOf(0) }
+    var conditionTracks by remember { mutableStateOf(emptyList<ConditionTrack>()) }
 
     LaunchedEffect(Unit) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
@@ -83,6 +84,10 @@ fun ProgressTrackerScreen(navController: NavController) {
         if (user != null) {
             val scans = db.scanRecordDao().getScansByUserOnce(user.userId)
             totalScans = scans.size
+            if (scans.isNotEmpty()) {
+                val earliest = scans.minOf { it.scanDate }
+                daysTracked = ((System.currentTimeMillis() - earliest) / (1000L * 60L * 60L * 24L)).toInt() + 1
+            }
             val grouped = scans.groupBy { it.condition }
             conditionTracks = grouped.map { (condition, scanList) ->
                 val mockTrack = mockProgressData.find { it.condition == condition }
@@ -135,7 +140,7 @@ fun ProgressTrackerScreen(navController: NavController) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             StatCard("$totalScans", "Total Scans", Modifier.weight(1f))
                             StatCard("${conditionTracks.size}", "Conditions", Modifier.weight(1f))
-                            StatCard("12", "Days Tracked", Modifier.weight(1f))
+                            StatCard("$daysTracked", "Days Tracked", Modifier.weight(1f))
                         }
                     }
                 }

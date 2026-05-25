@@ -61,6 +61,9 @@ fun CameraPreviewScreen(navController: NavController) {
     var camera by remember { mutableStateOf<Camera?>(null) }
     var isFrontCamera by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri -> if (uri != null) navController.navigate(Screen.ScanResult.route) }
 
     val previewView = remember { PreviewView(context) }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
@@ -189,7 +192,7 @@ fun CameraPreviewScreen(navController: NavController) {
 
                 // Gallery
                 IconButton(
-                    onClick = { },
+                    onClick = { galleryLauncher.launch("image/*") },
                     modifier = Modifier.size(52.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
                 ) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery", tint = Color.White, modifier = Modifier.size(24.dp))

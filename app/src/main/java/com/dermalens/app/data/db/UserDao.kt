@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.dermalens.app.data.model.User
 
 @Dao
@@ -27,5 +28,6 @@ interface UserDao {
     @Query("UPDATE users SET fullName = :fullName, email = :email WHERE userId = :userId")
     suspend fun updateProfile(userId: Int, fullName: String, email: String)
 
-
+    @Update
+    suspend fun updateUser(user: User): Int
 }
