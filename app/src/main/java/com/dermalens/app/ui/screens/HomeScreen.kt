@@ -18,12 +18,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.dermalens.app.data.db.DermaDatabase
+import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: String) {
     object Home : BottomNavItem(Screen.Home.route, Icons.Default.Home, "Home")
@@ -79,6 +85,19 @@ fun HomeScreen(navController: NavController) {
     val tipIndex = remember { (scanningTips.indices).random() }
     val tip = scanningTips[tipIndex]
     val settings = LocalAppSettings.current
+    val context = LocalContext.current
+    val db = remember { DermaDatabase.getDatabase(context) }
+    val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    var recentScan by remember { mutableStateOf<ScanRecord?>(null) }
+
+    LaunchedEffect(Unit) {
+        val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+        val user = db.userDao().getUserByEmail(savedEmail)
+        if (user != null) {
+            val scans = db.scanRecordDao().getScansByUserOnce(user.userId)
+            recentScan = scans.firstOrNull()
+        }
+    }
 
     Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
         Column(
@@ -116,22 +135,47 @@ fun HomeScreen(navController: NavController) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text("Recent Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
+                val severityColor = when (recentScan?.severity) {
+                    "Mild" -> DermaGreen
+                    "Moderate" -> Color(0xFFF59E0B)
+                    "Severe" -> Color(0xFFDC2626)
+                    else -> DermaGreen
+                }
                 Card(
                     modifier = Modifier.fillMaxWidth()
+                        .clickable {
+                            if (recentScan != null) navController.navigate(Screen.ProgressTracker.route)
+                            else navController.navigate(Screen.Scan.route)
+                        }
                         .then(if (settings.highContrast) Modifier.border(1.5.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
                     elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(DermaGreenLight), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.DocumentScanner, contentDescription = "Scan icon", tint = DermaGreen, modifier = Modifier.size(26.dp))
+                        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(if (recentScan != null) severityColor.copy(alpha = 0.12f) else DermaGreenLight), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.DocumentScanner, contentDescription = "Scan icon", tint = if (recentScan != null) severityColor else DermaGreen, modifier = Modifier.size(26.dp))
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("No scans yet", fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("Start your first skin scan today!", fontSize = settings.textBase.sp, color = settings.textSecondary)
+                            if (recentScan != null) {
+                                Text(recentScan!!.condition, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(recentScan!!.severity, fontSize = settings.textSm.sp, fontWeight = FontWeight.Medium, color = severityColor)
+                                    Text("  •  ${String.format("%.1f", recentScan!!.confidence)}% confidence", fontSize = settings.textSm.sp, color = settings.textSecondary)
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(recentScan!!.scanDate)),
+                                    fontSize = settings.textSm.sp,
+                                    color = settings.textSecondary
+                                )
+                            } else {
+                                Text("No scans yet", fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("Start your first skin scan today!", fontSize = settings.textBase.sp, color = settings.textSecondary)
+                            }
                         }
                         Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(DermaGreenLight), contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.ChevronRight, contentDescription = "Go to scan", tint = DermaGreen, modifier = Modifier.size(18.dp))
