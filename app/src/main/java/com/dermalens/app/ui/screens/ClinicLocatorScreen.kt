@@ -11,9 +11,11 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -95,6 +97,20 @@ val mockClinics = listOf(
     Clinic("Dr. Santos Skin & Laser Clinic", "Romulo Blvd, Tarlac City, Tarlac", "2.8 km", 4.9f, isOpenNow("Tue-Sat: 10:00 AM - 7:00 PM"), "Tue-Sat: 10:00 AM - 7:00 PM", "+63 45 982 3456", 15.4800, 120.5920),
     Clinic("Capampangan Derma Center", "McArthur Hwy, Tarlac City, Tarlac", "3.5 km", 4.5f, isOpenNow("Mon-Sat: 9:00 AM - 5:00 PM"), "Mon-Sat: 9:00 AM - 5:00 PM", "+63 45 982 7890", 15.4690, 120.6010),
 )
+
+private fun createUserDotDrawable(context: Context): Drawable {
+    val dp = context.resources.displayMetrics.density
+    val size = (22 * dp).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val cx = size / 2f
+    paint.color = 0xFFFFFFFF.toInt()
+    canvas.drawCircle(cx, cx, cx, paint)
+    paint.color = 0xFF7C3AED.toInt()
+    canvas.drawCircle(cx, cx, cx * 0.62f, paint)
+    return BitmapDrawable(context.resources, bitmap)
+}
 
 private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
     val r = 6371.0
@@ -192,6 +208,9 @@ fun ClinicLocatorScreen(navController: NavController) {
     var clinics by remember { mutableStateOf(mockClinics) }
     var isLoading by remember { mutableStateOf(true) }
     var locationLabel by remember { mutableStateOf("Locating...") }
+    var userLat by remember { mutableStateOf(15.4755) }
+    var userLng by remember { mutableStateOf(120.5963) }
+    var mapCentered by remember { mutableStateOf(false) }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -222,6 +241,8 @@ fun ClinicLocatorScreen(navController: NavController) {
             }
             val lat = location?.latitude ?: 15.4755
             val lng = location?.longitude ?: 120.5963
+            userLat = lat
+            userLng = lng
             val geocoder = android.location.Geocoder(context)
             val addresses = withContext(Dispatchers.IO) {
                 try { geocoder.getFromLocation(lat, lng, 1) } catch (e: Exception) { null }
@@ -310,16 +331,52 @@ fun ClinicLocatorScreen(navController: NavController) {
                             osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid")
                         }
                         MapView(ctx).apply {
-                            setTileSource(TileSourceFactory.MAPNIK)
+                            val cartoTiles = XYTileSource(
+                                "CartoDB",
+                                0, 19, 256, ".png",
+                                arrayOf(
+                                    "https://a.basemaps.cartocdn.com/light_all/",
+                                    "https://b.basemaps.cartocdn.com/light_all/",
+                                    "https://c.basemaps.cartocdn.com/light_all/"
+                                ),
+                                "© CartoDB © OpenStreetMap contributors"
+                            )
+                            setTileSource(cartoTiles)
                             setMultiTouchControls(true)
                             controller.setZoom(14.5)
-                            controller.setCenter(GeoPoint(15.4755, 120.5963))
+                            controller.setCenter(GeoPoint(userLat, userLng))
                         }
                     },
                     update = { mapView ->
-                        val markerIcon = createMarkerDrawable(mapView.context)
+                        val ctx = mapView.context
+                        val dp = ctx.resources.displayMetrics.density
+                        val markerIcon = createMarkerDrawable(ctx)
+                        val userDot = createUserDotDrawable(ctx)
                         mapView.overlays.clear()
+                        if (!mapCentered) {
+                            mapView.controller.setCenter(GeoPoint(userLat, userLng))
+                            mapCentered = true
+                        }
+                        // User location dot
+                        val userMarker = Marker(mapView).apply {
+                            position = GeoPoint(userLat, userLng)
+                            title = "You are here"
+                            icon = userDot
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        }
+                        mapView.overlays.add(userMarker)
+                        // Dashed route + clinic marker for each clinic
                         clinics.forEach { clinic ->
+                            val route = Polyline(mapView).apply {
+                                setPoints(listOf(GeoPoint(userLat, userLng), GeoPoint(clinic.lat, clinic.lng)))
+                                outlinePaint.color = 0xFF7C3AED.toInt()
+                                outlinePaint.strokeWidth = 3f * dp
+                                outlinePaint.alpha = 160
+                                outlinePaint.pathEffect = android.graphics.DashPathEffect(
+                                    floatArrayOf(14f * dp, 7f * dp), 0f
+                                )
+                            }
+                            mapView.overlays.add(route)
                             val marker = Marker(mapView).apply {
                                 position = GeoPoint(clinic.lat, clinic.lng)
                                 title = clinic.name
