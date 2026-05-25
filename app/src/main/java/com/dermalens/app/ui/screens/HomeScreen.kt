@@ -89,8 +89,9 @@ fun HomeScreen(navController: NavController) {
     val db = remember { DermaDatabase.getDatabase(context) }
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
     var recentScan by remember { mutableStateOf<ScanRecord?>(null) }
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(navBackStackEntry) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
         if (user != null) {
