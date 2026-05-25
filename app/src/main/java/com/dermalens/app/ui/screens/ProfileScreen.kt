@@ -38,7 +38,6 @@ fun ProfileScreen(navController: NavController) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(true) }
-    var contributeData by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false)) }
 
     val db = remember { DermaDatabase.getDatabase(context) }
     var userName by remember { mutableStateOf("User") }
@@ -51,6 +50,7 @@ fun ProfileScreen(navController: NavController) {
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
     var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
     var highContrast by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_HIGH_CONTRAST, false)) }
+    var contributeData by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false)) }
 
     LaunchedEffect(Unit) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
