@@ -13,9 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,7 +70,7 @@ fun getSeverityBg(severity: String): Color {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScanResultScreen(navController: NavController) {
+fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
     val result = remember { mockDetectionResults.random() }
     var isSaved by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
@@ -106,13 +108,24 @@ fun ScanResultScreen(navController: NavController) {
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Box(
-                        modifier = Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f)).border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+                        modifier = Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.ImageSearch, contentDescription = "Scan image placeholder", tint = Color.White, modifier = Modifier.size(40.dp))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Scan Image", fontSize = settings.textSm.sp, color = Color.White.copy(alpha = 0.8f))
+                        if (imageUri != null) {
+                            AsyncImage(
+                                model = android.net.Uri.parse(imageUri),
+                                contentDescription = "Scanned image",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.ImageSearch, contentDescription = "Scan image placeholder", tint = Color.White, modifier = Modifier.size(40.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Scan Image", fontSize = settings.textSm.sp, color = Color.White.copy(alpha = 0.8f))
+                                }
+                            }
                         }
                     }
 

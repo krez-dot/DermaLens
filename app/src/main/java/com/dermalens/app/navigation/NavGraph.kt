@@ -2,9 +2,11 @@ package com.dermalens.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.dermalens.app.ui.screens.*
 
 sealed class Screen(val route: String) {
@@ -14,7 +16,10 @@ sealed class Screen(val route: String) {
     object Register : Screen("register")
     object Home : Screen("home")
     object Scan : Screen("scan")
-    object ScanResult : Screen("scan_result")
+    object ScanResult : Screen("scan_result?imageUri={imageUri}") {
+        fun createRoute(imageUri: String?) =
+            if (imageUri != null) "scan_result?imageUri=${android.net.Uri.encode(imageUri)}" else "scan_result"
+    }
     object CareGuide : Screen("care_guide")
     object ProgressTracker : Screen("progress_tracker")
     object ClinicLocator : Screen("clinic_locator")
@@ -48,8 +53,18 @@ fun DermaLensNavGraph(
         composable(Screen.Scan.route) {
             ScanScreen(navController = navController)
         }
-        composable(Screen.ScanResult.route) {
-            ScanResultScreen(navController = navController)
+        composable(
+            Screen.ScanResult.route,
+            arguments = listOf(navArgument("imageUri") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            })
+        ) { backStackEntry ->
+            ScanResultScreen(
+                navController = navController,
+                imageUri = backStackEntry.arguments?.getString("imageUri")
+            )
         }
         composable(Screen.CareGuide.route) {
             CareGuideScreen(navController = navController)

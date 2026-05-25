@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -62,9 +63,10 @@ fun CameraPreviewScreen(navController: NavController) {
     var camera by remember { mutableStateOf<Camera?>(null) }
     var isFrontCamera by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri -> if (uri != null) navController.navigate(Screen.ScanResult.route) }
+    ) { uri -> if (uri != null) selectedImageUri = uri }
 
     val previewView = remember { PreviewView(context) }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
@@ -85,8 +87,16 @@ fun CameraPreviewScreen(navController: NavController) {
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-        // Camera Preview
-        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        if (selectedImageUri != null) {
+            AsyncImage(
+                model = selectedImageUri,
+                contentDescription = "Selected image",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        } else {
+            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        }
 
         // Dark overlay at top and bottom
         Box(modifier = Modifier.fillMaxWidth().height(120.dp).align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.5f)))
@@ -182,7 +192,7 @@ fun CameraPreviewScreen(navController: NavController) {
                             isScanning = true
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 isScanning = false
-                                navController.navigate(Screen.ScanResult.route)
+                                navController.navigate(Screen.ScanResult.createRoute(selectedImageUri?.toString()))
                             }, 2000)
                         },
                         enabled = !isScanning
