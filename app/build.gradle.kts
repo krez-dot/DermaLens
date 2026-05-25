@@ -91,6 +91,9 @@ dependencies {
     implementation("com.google.maps.android:maps-compose:4.3.3")
     implementation("com.google.android.libraries.places:places:3.4.0")
 
+    // ── OSMDroid (OpenStreetMap for Android, no API key needed) ──────────
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+
     // ── ViewModel + LiveData ──────────────────────────────────────────────
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")

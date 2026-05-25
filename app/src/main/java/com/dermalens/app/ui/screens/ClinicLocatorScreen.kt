@@ -2,9 +2,11 @@ package com.dermalens.app.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -137,42 +139,23 @@ fun ClinicLocatorScreen(navController: NavController) {
             }
 
             if (showMap) {
-                val mapHtml = """
-                    <!DOCTYPE html><html><head>
-                    <meta charset="utf-8"/>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                    <style>body{margin:0;padding:0;}#map{width:100%;height:100vh;}</style>
-                    </head><body><div id="map"></div><script>
-                    var map=L.map('map').setView([15.4755,120.5963],14);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);
-                    var clinics=[
-                        {lat:15.4755,lng:120.5963,name:"Tarlac Dermatology Clinic"},
-                        {lat:15.4780,lng:120.5940,name:"SkinCare Specialists Tarlac"},
-                        {lat:15.4720,lng:120.5990,name:"Tarlac Provincial Hospital - Derma"},
-                        {lat:15.4800,lng:120.5920,name:"Dr. Santos Skin & Laser Clinic"},
-                        {lat:15.4690,lng:120.6010,name:"Capampangan Derma Center"}
-                    ];
-                    clinics.forEach(function(c){L.marker([c.lat,c.lng]).addTo(map).bindPopup(c.name);});
-                    </script></body></html>
-                """.trimIndent()
-
                 AndroidView(
                     factory = { ctx ->
-                        WebView(ctx).apply {
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = false
+                        Configuration.getInstance().userAgentValue = ctx.packageName
+                        MapView(ctx).apply {
+                            setTileSource(TileSourceFactory.MAPNIK)
+                            setMultiTouchControls(true)
+                            controller.setZoom(14.5)
+                            controller.setCenter(GeoPoint(15.4755, 120.5963))
+                            mockClinics.forEach { clinic ->
+                                val marker = Marker(this).apply {
+                                    position = GeoPoint(clinic.lat, clinic.lng)
+                                    title = clinic.name
+                                    snippet = clinic.address
+                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                                }
+                                overlays.add(marker)
                             }
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.useWideViewPort = true
-                            settings.loadWithOverviewMode = true
-                            settings.setSupportZoom(true)
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
-                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            loadDataWithBaseURL("https://openstreetmap.org", mapHtml, "text/html", "UTF-8", null)
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(300.dp)
