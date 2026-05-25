@@ -90,18 +90,22 @@ fun HomeScreen(navController: NavController) {
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
     var userId by remember { mutableStateOf<Int?>(null) }
     var firstName by remember { mutableStateOf("") }
-    val recentScan by produceState<ScanRecord?>(null, userId) {
-        val id = userId ?: return@produceState
-        db.scanRecordDao().getScansByUser(id).collect { scans ->
-            value = scans.firstOrNull()
-        }
-    }
+    var recentScan by remember { mutableStateOf<ScanRecord?>(null) }
+    var scanCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
         userId = user?.userId
         firstName = user?.fullName?.trim()?.split(" ")?.firstOrNull() ?: ""
+    }
+
+    LaunchedEffect(userId) {
+        val id = userId ?: return@LaunchedEffect
+        db.scanRecordDao().getScansByUser(id).collect { scans ->
+            recentScan = scans.firstOrNull()
+            scanCount = scans.size
+        }
     }
 
     Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
@@ -125,6 +129,23 @@ fun HomeScreen(navController: NavController) {
                     Text("DermaLens", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text("Your personal skin health companion", fontSize = settings.textBase.sp, color = Color.White.copy(alpha = 0.75f))
+                    if (scanCount > 0) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "$scanCount scan${if (scanCount == 1) "" else "s"} completed",
+                                fontSize = settings.textSm.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
                 Box(
                     modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f)).align(Alignment.CenterEnd),
