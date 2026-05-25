@@ -68,7 +68,11 @@ fun CameraPreviewScreen(navController: NavController) {
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) selectedImageUri = uri }
 
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
     fun startCamera(frontCamera: Boolean = false) {
