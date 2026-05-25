@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.drawable.BitmapDrawable
@@ -81,7 +80,7 @@ private fun createMarkerDrawable(context: Context): Drawable {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     val cx = w / 2f
     val r = w / 2f
-    paint.color = Color.parseColor("#7C3AED")
+    paint.color = 0xFF7C3AED.toInt()
     paint.style = Paint.Style.FILL
     canvas.drawCircle(cx, r, r, paint)
     val path = Path()
@@ -90,9 +89,9 @@ private fun createMarkerDrawable(context: Context): Drawable {
     path.lineTo(cx, h.toFloat())
     path.close()
     canvas.drawPath(path, paint)
-    paint.color = Color.WHITE
+    paint.color = 0xFFFFFFFF.toInt()
     canvas.drawCircle(cx, r, r * 0.42f, paint)
-    paint.color = Color.parseColor("#7C3AED")
+    paint.color = 0xFF7C3AED.toInt()
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = r * 0.28f
     paint.strokeCap = Paint.Cap.ROUND
@@ -247,7 +246,11 @@ fun ClinicLocatorScreen(navController: NavController) {
             if (showMap) {
                 AndroidView(
                     factory = { ctx ->
-                        Configuration.getInstance().userAgentValue = ctx.packageName
+                        Configuration.getInstance().apply {
+                            userAgentValue = ctx.packageName
+                            osmdroidBasePath = ctx.cacheDir
+                            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid")
+                        }
                         MapView(ctx).apply {
                             setTileSource(TileSourceFactory.MAPNIK)
                             setMultiTouchControls(true)
