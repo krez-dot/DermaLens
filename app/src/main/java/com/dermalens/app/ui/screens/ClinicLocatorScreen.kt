@@ -1,7 +1,15 @@
 package com.dermalens.app.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -64,14 +72,44 @@ private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double):
     return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+private fun createMarkerDrawable(context: Context): Drawable {
+    val dp = context.resources.displayMetrics.density
+    val w = (36 * dp).toInt()
+    val h = (50 * dp).toInt()
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val cx = w / 2f
+    val r = w / 2f
+    paint.color = Color.parseColor("#7C3AED")
+    paint.style = Paint.Style.FILL
+    canvas.drawCircle(cx, r, r, paint)
+    val path = Path()
+    path.moveTo(cx - r * 0.45f, r + r * 0.55f)
+    path.lineTo(cx + r * 0.45f, r + r * 0.55f)
+    path.lineTo(cx, h.toFloat())
+    path.close()
+    canvas.drawPath(path, paint)
+    paint.color = Color.WHITE
+    canvas.drawCircle(cx, r, r * 0.42f, paint)
+    paint.color = Color.parseColor("#7C3AED")
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = r * 0.28f
+    paint.strokeCap = Paint.Cap.ROUND
+    val arm = r * 0.26f
+    canvas.drawLine(cx, r - arm, cx, r + arm, paint)
+    canvas.drawLine(cx - arm, r, cx + arm, r, paint)
+    return BitmapDrawable(context.resources, bitmap)
+}
+
 private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
     return withContext(Dispatchers.IO) {
         try {
             val query = """
                 [out:json][timeout:25];
                 (
-                  node["amenity"~"clinic|hospital|doctors"](around:10000,$lat,$lng);
-                  node["healthcare"~"clinic|hospital|doctor"](around:10000,$lat,$lng);
+                  node["healthcare:speciality"="dermatology"](around:15000,$lat,$lng);
+                  node["name"~"derma|skin care|skincare|skin clinic|laser skin|acne|eczema",i](around:15000,$lat,$lng);
                 );
                 out body;
             """.trimIndent()
@@ -218,12 +256,14 @@ fun ClinicLocatorScreen(navController: NavController) {
                         }
                     },
                     update = { mapView ->
+                        val markerIcon = createMarkerDrawable(mapView.context)
                         mapView.overlays.clear()
                         clinics.forEach { clinic ->
                             val marker = Marker(mapView).apply {
                                 position = GeoPoint(clinic.lat, clinic.lng)
                                 title = clinic.name
                                 snippet = clinic.address
+                                icon = markerIcon
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                             }
                             mapView.overlays.add(marker)
