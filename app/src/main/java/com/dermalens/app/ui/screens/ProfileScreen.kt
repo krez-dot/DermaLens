@@ -26,7 +26,6 @@ import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
 import androidx.compose.runtime.LaunchedEffect
 import com.dermalens.app.data.db.DermaDatabase
-import com.dermalens.app.worker.NotificationScheduler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -297,10 +296,10 @@ fun ProfileScreen(navController: NavController) {
 fun EditProfileScreen(navController: NavController) {
     val settings = LocalAppSettings.current
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var isSaved by remember { mutableStateOf(false) }
+    var saveTrigger by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         val db = DermaDatabase.getDatabase(context)
@@ -311,6 +310,19 @@ fun EditProfileScreen(navController: NavController) {
             name = user.fullName
             email = user.email
         }
+    }
+
+    LaunchedEffect(saveTrigger) {
+        if (saveTrigger == 0) return@LaunchedEffect
+        val db = DermaDatabase.getDatabase(context)
+        val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
+        val user = db.userDao().getUserByEmail(savedEmail)
+        if (user != null) {
+            db.userDao().updateProfile(user.userId, name.trim(), email.trim())
+            prefs.edit().putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
+        }
+        isSaved = true
     }
 
     Scaffold(
@@ -339,19 +351,7 @@ fun EditProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(value = email, onValueChange = { email = it; isSaved = false }, label = { Text("Email address") }, leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DermaGreen, focusedLabelColor = DermaGreen, unfocusedBorderColor = if (settings.highContrast) Color.Black else Color(0xFFE5E7EB), unfocusedLabelColor = if (settings.highContrast) Color(0xFF1a1a1a) else Color(0xFF9CA3AF), focusedTextColor = Color(0xFF111827), unfocusedTextColor = Color(0xFF111827)))
             Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = {
-                scope.launch {
-                    val db = DermaDatabase.getDatabase(context)
-                    val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                    val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
-                    val user = db.userDao().getUserByEmail(savedEmail)
-                    if (user != null) {
-                        db.userDao().updateProfile(user.userId, name.trim(), email.trim())
-                        prefs.edit().putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
-                    }
-                    isSaved = true
-                }
-            }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else DermaGreen)) {
+            Button(onClick = { saveTrigger++ }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isSaved) Color(0xFF16A34A) else DermaGreen)) {
                 Icon(if (isSaved) Icons.Default.Check else Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(if (isSaved) "Saved!" else "Save Changes", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
