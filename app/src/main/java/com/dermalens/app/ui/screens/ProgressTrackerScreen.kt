@@ -24,22 +24,23 @@ import androidx.navigation.NavController
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
+import kotlinx.coroutines.launch
 
-data class ScanEntry(val date: String, val severity: String, val confidence: Float, val notes: String)
+data class ScanEntry(val id: Int, val date: String, val severity: String, val confidence: Float, val notes: String)
 data class ConditionTrack(val condition: String, val color: Color, val emoji: String, val scans: List<ScanEntry>)
 
 val mockProgressData = listOf(
     ConditionTrack("Acne Vulgaris", Color(0xFFE53935), "🔴", listOf(
-        ScanEntry("May 1, 2026", "Severe", 94.3f, "Initial scan — widespread breakout"),
-        ScanEntry("May 5, 2026", "Moderate", 89.2f, "Slight improvement after treatment"),
-        ScanEntry("May 10, 2026", "Mild", 91.5f, "Significant improvement noted"),
+        ScanEntry(0, "May 1, 2026", "Severe", 94.3f, "Initial scan — widespread breakout"),
+        ScanEntry(0, "May 5, 2026", "Moderate", 89.2f, "Slight improvement after treatment"),
+        ScanEntry(0, "May 10, 2026", "Mild", 91.5f, "Significant improvement noted"),
     )),
     ConditionTrack("Atopic Dermatitis", Color(0xFFFF9800), "🟠", listOf(
-        ScanEntry("Apr 20, 2026", "Moderate", 87.6f, "Flare-up detected on forearm"),
-        ScanEntry("Apr 28, 2026", "Mild", 85.1f, "Moisturizer routine helping"),
+        ScanEntry(0, "Apr 20, 2026", "Moderate", 87.6f, "Flare-up detected on forearm"),
+        ScanEntry(0, "Apr 28, 2026", "Mild", 85.1f, "Moisturizer routine helping"),
     )),
     ConditionTrack("Melasma", Color(0xFF795548), "🟤", listOf(
-        ScanEntry("May 3, 2026", "Mild", 91.2f, "Brown patches on cheeks detected"),
+        ScanEntry(0, "May 3, 2026", "Mild", 91.2f, "Brown patches on cheeks detected"),
     ))
 )
 
@@ -74,11 +75,13 @@ fun ProgressTrackerScreen(navController: NavController) {
     val db = remember { DermaDatabase.getDatabase(context) }
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
 
+    val scope = rememberCoroutineScope()
+    var refreshKey by remember { mutableStateOf(0) }
     var totalScans by remember { mutableStateOf(0) }
     var daysTracked by remember { mutableStateOf(0) }
     var conditionTracks by remember { mutableStateOf(emptyList<ConditionTrack>()) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshKey) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
         if (user != null) {
@@ -97,6 +100,7 @@ fun ProgressTrackerScreen(navController: NavController) {
                     emoji = mockTrack?.emoji ?: "🔵",
                     scans = scanList.map { scan ->
                         ScanEntry(
+                            id = scan.id,
                             date = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
                                 .format(java.util.Date(scan.scanDate)),
                             severity = scan.severity,
@@ -197,7 +201,17 @@ fun ProgressTrackerScreen(navController: NavController) {
             }
 
             items(conditionTracks) { track ->
-                ConditionTrackCard(track = track, onScanAgain = { navController.navigate(Screen.Scan.route) }, onViewGuide = { navController.navigate(Screen.CareGuide.route) })
+                ConditionTrackCard(
+                    track = track,
+                    onScanAgain = { navController.navigate(Screen.Scan.route) },
+                    onViewGuide = { navController.navigate(Screen.CareGuide.route) },
+                    onDeleteScan = { scanId ->
+                        scope.launch {
+                            db.scanRecordDao().deleteScan(scanId)
+                            refreshKey++
+                        }
+                    }
+                )
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
@@ -231,7 +245,7 @@ fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGuide: () -> Unit) {
+fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGuide: () -> Unit, onDeleteScan: (Int) -> Unit) {
     var isExpanded by remember { mutableStateOf(true) }
     val settings = LocalAppSettings.current
 
@@ -277,7 +291,14 @@ fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGui
                 Spacer(modifier = Modifier.height(16.dp))
 
                 track.scans.forEachIndexed { index, scan ->
-                    TimelineNode(scan = scan, isFirst = index == 0, isLast = index == track.scans.size - 1, color = track.color, previousScan = if (index > 0) track.scans[index - 1] else null)
+                    TimelineNode(
+                        scan = scan,
+                        isFirst = index == 0,
+                        isLast = index == track.scans.size - 1,
+                        color = track.color,
+                        previousScan = if (index > 0) track.scans[index - 1] else null,
+                        onDelete = { onDeleteScan(scan.id) }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -310,11 +331,31 @@ fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGui
 }
 
 @Composable
-fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Color, previousScan: ScanEntry?) {
+fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Color, previousScan: ScanEntry?, onDelete: () -> Unit) {
     val severityColor = getSeverityColor(scan.severity)
     val improved = previousScan != null && getSeverityLevel(scan.severity) < getSeverityLevel(previousScan.severity)
     val worsened = previousScan != null && getSeverityLevel(scan.severity) > getSeverityLevel(previousScan.severity)
     val settings = LocalAppSettings.current
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            containerColor = Color.White,
+            title = { Text("Delete Scan?", fontWeight = FontWeight.Bold) },
+            text = { Text("This will permanently remove the scan from ${scan.date}. This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteDialog = false; onDelete() }) {
+                    Text("Delete", color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Row(modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -362,6 +403,12 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
                         }
                         Box(modifier = Modifier.background(getSeverityBg(scan.severity), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
                             Text(scan.severity, fontSize = settings.textSm.sp, color = severityColor, fontWeight = FontWeight.SemiBold)
+                        }
+                        IconButton(
+                            onClick = { showDeleteDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete scan", tint = Color(0xFF9CA3AF), modifier = Modifier.size(16.dp))
                         }
                     }
                 }
