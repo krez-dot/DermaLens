@@ -137,14 +137,32 @@ fun ClinicLocatorScreen(navController: NavController) {
             }
 
             if (showMap) {
-                // Map View with fixed height
+                val mapHtml = """
+                    <!DOCTYPE html><html><head>
+                    <meta charset="utf-8"/>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                    <style>body{margin:0;padding:0;}#map{width:100%;height:100vh;}</style>
+                    </head><body><div id="map"></div><script>
+                    var map=L.map('map').setView([15.4755,120.5963],14);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);
+                    var clinics=[
+                        {lat:15.4755,lng:120.5963,name:"Tarlac Dermatology Clinic"},
+                        {lat:15.4780,lng:120.5940,name:"SkinCare Specialists Tarlac"},
+                        {lat:15.4720,lng:120.5990,name:"Tarlac Provincial Hospital - Derma"},
+                        {lat:15.4800,lng:120.5920,name:"Dr. Santos Skin & Laser Clinic"},
+                        {lat:15.4690,lng:120.6010,name:"Capampangan Derma Center"}
+                    ];
+                    clinics.forEach(function(c){L.marker([c.lat,c.lng]).addTo(map).bindPopup(c.name);});
+                    </script></body></html>
+                """.trimIndent()
+
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
                             webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                    return false
-                                }
+                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = false
                             }
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
@@ -154,12 +172,10 @@ fun ClinicLocatorScreen(navController: NavController) {
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
                             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            loadUrl("https://www.openstreetmap.org/export/embed.html?bbox=120.5763,15.4555,120.6163,15.4955&layer=mapnik&marker=15.4755,120.5963")
+                            loadDataWithBaseURL("https://openstreetmap.org", mapHtml, "text/html", "UTF-8", null)
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp)
+                    modifier = Modifier.fillMaxWidth().height(300.dp)
                 )
 
                 // Clinic cards below map
