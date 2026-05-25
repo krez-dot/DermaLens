@@ -53,12 +53,44 @@ data class Clinic(
     val lng: Double
 )
 
+private fun isOpenNow(hours: String): Boolean {
+    if (hours.isEmpty() || hours.startsWith("Contact")) return true
+    return try {
+        val cal = java.util.Calendar.getInstance()
+        val dow = cal.get(java.util.Calendar.DAY_OF_WEEK)
+        val nowMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        val colonIdx = hours.indexOf(':')
+        if (colonIdx < 0) return true
+        val dayPart = hours.substring(0, colonIdx).trim()
+        val timePart = hours.substring(colonIdx + 1).trim()
+        val dayMap = mapOf("Mon" to 2, "Tue" to 3, "Wed" to 4, "Thu" to 5, "Fri" to 6, "Sat" to 7, "Sun" to 1)
+        val dayTokens = dayPart.split("-")
+        val startDay = dayMap[dayTokens[0].trim()] ?: return true
+        val endDay = if (dayTokens.size > 1) dayMap[dayTokens[1].trim()] ?: return true else startDay
+        val inDay = if (startDay <= endDay) dow in startDay..endDay else dow >= startDay || dow <= endDay
+        if (!inDay) return false
+        val times = timePart.split(" - ")
+        if (times.size < 2) return true
+        fun toMin(t: String): Int {
+            val pm = "PM" in t
+            val clean = t.replace("AM", "").replace("PM", "").trim()
+            val hm = clean.split(":")
+            var h = hm[0].trim().toInt()
+            val m = if (hm.size > 1) hm[1].trim().toInt() else 0
+            if (pm && h != 12) h += 12
+            if (!pm && h == 12) h = 0
+            return h * 60 + m
+        }
+        nowMin in toMin(times[0])..toMin(times[1])
+    } catch (e: Exception) { true }
+}
+
 val mockClinics = listOf(
-    Clinic("Tarlac Dermatology Clinic", "Macabulos Dr, Tarlac City, Tarlac", "0.8 km", 4.8f, true, "Mon-Sat: 8:00 AM - 5:00 PM", "+63 45 982 1234", 15.4755, 120.5963),
-    Clinic("SkinCare Specialists Tarlac", "F. Tañedo St, Tarlac City, Tarlac", "1.2 km", 4.6f, true, "Mon-Fri: 9:00 AM - 6:00 PM", "+63 45 982 5678", 15.4780, 120.5940),
-    Clinic("Tarlac Provincial Hospital - Derma", "San Vicente St, Tarlac City, Tarlac", "2.1 km", 4.3f, true, "Mon-Sun: 8:00 AM - 8:00 PM", "+63 45 982 9012", 15.4720, 120.5990),
-    Clinic("Dr. Santos Skin & Laser Clinic", "Romulo Blvd, Tarlac City, Tarlac", "2.8 km", 4.9f, false, "Tue-Sat: 10:00 AM - 7:00 PM", "+63 45 982 3456", 15.4800, 120.5920),
-    Clinic("Capampangan Derma Center", "McArthur Hwy, Tarlac City, Tarlac", "3.5 km", 4.5f, true, "Mon-Sat: 9:00 AM - 5:00 PM", "+63 45 982 7890", 15.4690, 120.6010),
+    Clinic("Tarlac Dermatology Clinic", "Macabulos Dr, Tarlac City, Tarlac", "0.8 km", 4.8f, isOpenNow("Mon-Sat: 8:00 AM - 5:00 PM"), "Mon-Sat: 8:00 AM - 5:00 PM", "+63 45 982 1234", 15.4755, 120.5963),
+    Clinic("SkinCare Specialists Tarlac", "F. Tañedo St, Tarlac City, Tarlac", "1.2 km", 4.6f, isOpenNow("Mon-Fri: 9:00 AM - 6:00 PM"), "Mon-Fri: 9:00 AM - 6:00 PM", "+63 45 982 5678", 15.4780, 120.5940),
+    Clinic("Tarlac Provincial Hospital - Derma", "San Vicente St, Tarlac City, Tarlac", "2.1 km", 4.3f, isOpenNow("Mon-Sun: 8:00 AM - 8:00 PM"), "Mon-Sun: 8:00 AM - 8:00 PM", "+63 45 982 9012", 15.4720, 120.5990),
+    Clinic("Dr. Santos Skin & Laser Clinic", "Romulo Blvd, Tarlac City, Tarlac", "2.8 km", 4.9f, isOpenNow("Tue-Sat: 10:00 AM - 7:00 PM"), "Tue-Sat: 10:00 AM - 7:00 PM", "+63 45 982 3456", 15.4800, 120.5920),
+    Clinic("Capampangan Derma Center", "McArthur Hwy, Tarlac City, Tarlac", "3.5 km", 4.5f, isOpenNow("Mon-Sat: 9:00 AM - 5:00 PM"), "Mon-Sat: 9:00 AM - 5:00 PM", "+63 45 982 7890", 15.4690, 120.6010),
 )
 
 private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
@@ -139,7 +171,7 @@ private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
                 ).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { "Tarlac, Philippines" }
                 val phone = tags.optString("phone").ifEmpty { tags.optString("contact:phone") }.ifEmpty { "N/A" }
                 val hours = tags.optString("opening_hours").ifEmpty { "Contact clinic for hours" }
-                result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, true, hours, phone, elLat, elLng))
+                result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, isOpenNow(hours), hours, phone, elLat, elLng))
             }
             result.sortedBy { haversineKm(lat, lng, it.lat, it.lng) }
         } catch (e: Exception) {
@@ -331,7 +363,10 @@ fun ClinicLocatorScreen(navController: NavController) {
                     Text("Close")
                 }
             },
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
         )
     }
 }
