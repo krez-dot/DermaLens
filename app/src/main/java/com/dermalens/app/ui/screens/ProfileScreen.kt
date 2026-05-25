@@ -36,6 +36,7 @@ fun ProfileScreen(navController: NavController) {
     val settings = LocalAppSettings.current
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(true) }
 
     val db = remember { DermaDatabase.getDatabase(context) }
@@ -156,7 +157,7 @@ fun ProfileScreen(navController: NavController) {
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.Info, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "About DermaLens", subtitle = "Version 1.0.0 — Capstone 2026", onClick = { showAboutDialog = true })
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                ProfileMenuItem(icon = Icons.Default.Shield, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Privacy Policy", subtitle = "How we handle your data")
+                ProfileMenuItem(icon = Icons.Default.Shield, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Privacy Policy", subtitle = "How we handle your data", onClick = { showPrivacyDialog = true })
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -260,6 +261,40 @@ fun ProfileScreen(navController: NavController) {
             },
             dismissButton = {
                 OutlinedButton(onClick = { showLogoutDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Cancel", fontSize = settings.textMd.sp) }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
+        )
+    }
+
+    // Privacy Policy Dialog
+    if (showPrivacyDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyDialog = false },
+            icon = { Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF16A34A)) },
+            title = { Text("Privacy Policy", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp, color = Color(0xFF111827)) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Effective Date: January 1, 2026", fontSize = settings.textSm.sp, color = Color(0xFF6B7280))
+                    PrivacySection("1. Information We Collect", "DermaLens collects the following data to provide its services:\n\n• Profile information you provide (full name, email address)\n• Skin scan results including detected condition, confidence score, and severity level\n• Scan history and timestamps stored locally on your device\n• Device location (GPS) used only to find nearby dermatology clinics")
+                    PrivacySection("2. How We Use Your Data", "All data collected by DermaLens is used solely to:\n\n• Display your scan history and progress over time\n• Personalize your in-app experience\n• Help locate nearby dermatology clinics based on your location\n• Send optional daily skin care reminder notifications")
+                    PrivacySection("3. Data Storage", "All personal data and scan records are stored locally on your device using a secure Room database. DermaLens does not transmit your personal information or scan images to any external server or cloud service.")
+                    PrivacySection("4. Camera & Gallery Access", "Camera and gallery access is used exclusively to capture or select skin images for AI analysis. Images are processed on-device and are never uploaded, stored permanently, or shared with third parties.")
+                    PrivacySection("5. Location Access", "Location is accessed only when you use the Clinic Locator feature to find nearby dermatology clinics. Location data is not stored or logged.")
+                    PrivacySection("6. AI Disclaimer", "DermaLens uses an on-device AI model (YOLOv11 TFLite) for skin condition detection. Results are for reference only and do not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")
+                    PrivacySection("7. Children's Privacy", "DermaLens is not intended for users under the age of 13. We do not knowingly collect data from children.")
+                    PrivacySection("8. Contact", "DermaLens is a capstone project developed at Tarlac State University, 2026. For questions or concerns, please contact the development team through your institution.")
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPrivacyDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)), shape = RoundedCornerShape(10.dp)) {
+                    Text("Got it", fontSize = settings.textMd.sp)
+                }
             },
             shape = RoundedCornerShape(16.dp),
             containerColor = Color.White,
@@ -419,6 +454,15 @@ fun EditProfileScreen(navController: NavController) {
 }
 
 // ── Helper Composables ────────────────────────────────────────────────────────
+@Composable
+fun PrivacySection(title: String, body: String) {
+    val settings = LocalAppSettings.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+        Text(body, fontSize = settings.textSm.sp, color = Color(0xFF6B7280), lineHeight = 18.sp)
+    }
+}
+
 @Composable
 fun ProfileSectionHeader(title: String) {
     val settings = LocalAppSettings.current
