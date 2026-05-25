@@ -283,6 +283,8 @@ fun RegisterScreen(navController: NavController) {
                             if (emailTaken) { registerError = "An account with this email already exists."; isLoading = false }
                             else {
                                 db.userDao().insertUser(User(fullName = name.trim(), email = email.trim(), passwordHash = hashPassword(password)))
+                                val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                                prefs.edit().putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true).putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
                                 isLoading = false
                                 navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
                             }
