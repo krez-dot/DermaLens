@@ -38,8 +38,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 data class Clinic(
     val name: String,
@@ -188,11 +191,14 @@ fun ClinicLocatorScreen(navController: NavController) {
     var selectedClinic by remember { mutableStateOf<Clinic?>(null) }
     var clinics by remember { mutableStateOf(mockClinics) }
     var isLoading by remember { mutableStateOf(true) }
+    var locationLabel by remember { mutableStateOf("Locating...") }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -201,13 +207,33 @@ fun ClinicLocatorScreen(navController: NavController) {
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(hasLocationPermission) {
         if (!hasLocationPermission) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            locationLabel = "Tarlac City, Tarlac"
+            val fetched = fetchNearbyClinics(15.4755, 120.5963)
+            if (fetched.isNotEmpty()) clinics = fetched
+            isLoading = false
+        } else {
+            val location = suspendCancellableCoroutine<android.location.Location?> { cont ->
+                fusedLocationClient.lastLocation
+                    .addOnSuccessListener { cont.resume(it) }
+                    .addOnFailureListener { cont.resume(null) }
+            }
+            val lat = location?.latitude ?: 15.4755
+            val lng = location?.longitude ?: 120.5963
+            val geocoder = android.location.Geocoder(context)
+            val addresses = withContext(Dispatchers.IO) {
+                try { geocoder.getFromLocation(lat, lng, 1) } catch (e: Exception) { null }
+            }
+            locationLabel = addresses?.firstOrNull()?.let {
+                listOf(it.subLocality, it.locality, it.adminArea)
+                    .filter { s -> !s.isNullOrEmpty() }.take(2).joinToString(", ")
+            }?.takeIf { it.isNotEmpty() } ?: "Near you"
+            val fetched = fetchNearbyClinics(lat, lng)
+            if (fetched.isNotEmpty()) clinics = fetched
+            isLoading = false
         }
-        val fetched = fetchNearbyClinics(15.4755, 120.5963)
-        if (fetched.isNotEmpty()) clinics = fetched
-        isLoading = false
     }
 
     Scaffold(
@@ -265,7 +291,7 @@ fun ClinicLocatorScreen(navController: NavController) {
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Tarlac City, Tarlac", fontSize = 14.sp, color = Color(0xFF444444), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                Text(locationLabel, fontSize = 14.sp, color = Color(0xFF444444), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Box(modifier = Modifier.background(DermaGreenLight, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 4.dp)) {
                     if (isLoading) {
                         CircularProgressIndicator(color = DermaGreen, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
