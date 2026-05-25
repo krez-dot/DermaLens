@@ -336,6 +336,8 @@ fun RegisterScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showPrivacyDialog = false },
             containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151),
             title = { Text("Privacy Policy", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {

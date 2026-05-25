@@ -342,6 +342,8 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151),
             title = { Text("Delete Scan?", fontWeight = FontWeight.Bold) },
             text = { Text("This will permanently remove the scan from ${scan.date}. This cannot be undone.") },
             confirmButton = {
@@ -351,7 +353,7 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color(0xFF6B7280))
                 }
             }
         )

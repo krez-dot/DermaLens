@@ -97,7 +97,7 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFFF8F9FA))
+                .background(if (settings.highContrast) Color.White else Color(0xFFF8F9FA))
                 .verticalScroll(rememberScrollState())
         ) {
             // Detection Banner
@@ -191,7 +191,10 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
 
                 // Disclaimer
                 Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFF7ED)).padding(12.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(if (settings.highContrast) Color(0xFFFFE0B2) else Color(0xFFFFF7ED))
+                        .then(if (settings.highContrast) Modifier.border(1.dp, Color(0xFFE65100), RoundedCornerShape(12.dp)) else Modifier)
+                        .padding(12.dp),
                     verticalAlignment = Alignment.Top
                 ) {
                     Text("⚕️", fontSize = settings.textMd.sp)
@@ -307,10 +310,11 @@ fun ResultCard(
 ) {
     val settings = LocalAppSettings.current
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .then(if (settings.highContrast) Modifier.border(1.dp, Color(0xFFCCCCCC), RoundedCornerShape(16.dp)) else Modifier),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        elevation = CardDefaults.cardElevation(if (bgColor == Color.White) 2.dp else 0.dp)
+        colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else bgColor),
+        elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else if (bgColor == Color.White) 2.dp else 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
