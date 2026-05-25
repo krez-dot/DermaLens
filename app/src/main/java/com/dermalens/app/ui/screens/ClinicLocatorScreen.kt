@@ -199,6 +199,34 @@ private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
     }
 }
 
+private suspend fun fetchRoute(fromLat: Double, fromLng: Double, toLat: Double, toLng: Double): List<GeoPoint> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val url = java.net.URL(
+                "https://router.project-osrm.org/route/v1/driving/$fromLng,$fromLat;$toLng,$toLat?overview=full&geometries=geojson"
+            )
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 15000
+                setRequestProperty("User-Agent", "DermaLens/1.0")
+            }
+            val response = conn.inputStream.bufferedReader().readText()
+            val coords = org.json.JSONObject(response)
+                .getJSONArray("routes")
+                .getJSONObject(0)
+                .getJSONObject("geometry")
+                .getJSONArray("coordinates")
+            (0 until coords.length()).map { i ->
+                val c = coords.getJSONArray(i)
+                GeoPoint(c.getDouble(1), c.getDouble(0))
+            }
+        } catch (e: Exception) {
+            listOf(GeoPoint(fromLat, fromLng), GeoPoint(toLat, toLng))
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClinicLocatorScreen(navController: NavController) {
@@ -216,6 +244,8 @@ fun ClinicLocatorScreen(navController: NavController) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+
+    var routes by remember { mutableStateOf<Map<String, List<GeoPoint>>>(emptyMap()) }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -255,6 +285,14 @@ fun ClinicLocatorScreen(navController: NavController) {
             if (fetched.isNotEmpty()) clinics = fetched
             isLoading = false
         }
+    }
+
+    LaunchedEffect(clinics, userLat, userLng) {
+        val fetched = mutableMapOf<String, List<GeoPoint>>()
+        clinics.forEach { clinic ->
+            fetched[clinic.name] = fetchRoute(userLat, userLng, clinic.lat, clinic.lng)
+        }
+        routes = fetched
     }
 
     Scaffold(
@@ -365,16 +403,15 @@ fun ClinicLocatorScreen(navController: NavController) {
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         }
                         mapView.overlays.add(userMarker)
-                        // Dashed route + clinic marker for each clinic
+                        // Road route + clinic marker for each clinic
                         clinics.forEach { clinic ->
+                            val routePoints = routes[clinic.name]
+                                ?: listOf(GeoPoint(userLat, userLng), GeoPoint(clinic.lat, clinic.lng))
                             val route = Polyline(mapView).apply {
-                                setPoints(listOf(GeoPoint(userLat, userLng), GeoPoint(clinic.lat, clinic.lng)))
+                                setPoints(routePoints)
                                 outlinePaint.color = 0xFF7C3AED.toInt()
-                                outlinePaint.strokeWidth = 3f * dp
-                                outlinePaint.alpha = 160
-                                outlinePaint.pathEffect = android.graphics.DashPathEffect(
-                                    floatArrayOf(14f * dp, 7f * dp), 0f
-                                )
+                                outlinePaint.strokeWidth = 4f * dp
+                                outlinePaint.alpha = 200
                             }
                             mapView.overlays.add(route)
                             val marker = Marker(mapView).apply {
