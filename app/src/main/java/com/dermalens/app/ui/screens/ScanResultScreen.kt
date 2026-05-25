@@ -188,6 +188,19 @@ fun ScanResultScreen(navController: NavController) {
 
                 // Action Buttons
                 Button(
+                    onClick = { navController.navigate(Screen.ClinicLocator.route) },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                ) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Find Nearby Clinic", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Button(
                     onClick = { navController.navigate(Screen.CareGuide.route) },
                     modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = "View care guide for ${result.condition}" },
                     shape = RoundedCornerShape(14.dp),

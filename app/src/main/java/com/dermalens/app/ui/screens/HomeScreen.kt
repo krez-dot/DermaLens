@@ -89,6 +89,7 @@ fun HomeScreen(navController: NavController) {
     val db = remember { DermaDatabase.getDatabase(context) }
     val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
     var userId by remember { mutableStateOf<Int?>(null) }
+    var firstName by remember { mutableStateOf("") }
     val recentScan by produceState<ScanRecord?>(null, userId) {
         val id = userId ?: return@produceState
         db.scanRecordDao().getScansByUser(id).collect { scans ->
@@ -100,6 +101,7 @@ fun HomeScreen(navController: NavController) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
         userId = user?.userId
+        firstName = user?.fullName?.trim()?.split(" ")?.firstOrNull() ?: ""
     }
 
     Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
@@ -118,7 +120,7 @@ fun HomeScreen(navController: NavController) {
                     .padding(horizontal = 20.dp, vertical = 28.dp)
             ) {
                 Column {
-                    Text("Welcome back! 👋", fontSize = settings.textMd.sp, color = Color.White.copy(alpha = 0.85f))
+                    Text(if (firstName.isNotEmpty()) "Welcome back, $firstName! 👋" else "Welcome back! 👋", fontSize = settings.textMd.sp, color = Color.White.copy(alpha = 0.85f))
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("DermaLens", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(modifier = Modifier.height(2.dp))
