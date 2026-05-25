@@ -29,7 +29,9 @@ import androidx.compose.ui.platform.LocalContext
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.ui.screens.DermaPrefs
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DetectionResult(
     val condition: String,
@@ -235,13 +237,30 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                                 val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
                                 val user = db.userDao().getUserByEmail(savedEmail)
                                 if (user != null) {
+                                    val contributeEnabled = prefs.getBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false)
+                                    var savedImagePath = ""
+                                    if (contributeEnabled && imageUri != null) {
+                                        savedImagePath = withContext(Dispatchers.IO) {
+                                            try {
+                                                val dir = java.io.File(context.filesDir, "contributed_scans")
+                                                dir.mkdirs()
+                                                val file = java.io.File(dir, "${System.currentTimeMillis()}.jpg")
+                                                context.contentResolver.openInputStream(android.net.Uri.parse(imageUri))?.use { input ->
+                                                    file.outputStream().use { output -> input.copyTo(output) }
+                                                }
+                                                file.absolutePath
+                                            } catch (e: Exception) { "" }
+                                        }
+                                    }
                                     db.scanRecordDao().insertScan(
                                         ScanRecord(
                                             userId = user.userId,
                                             condition = result.condition,
                                             confidence = result.confidence,
                                             severity = result.severity,
-                                            notes = "Scanned on ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date())}"
+                                            notes = "Scanned on ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date())}",
+                                            imagePath = savedImagePath,
+                                            contributedForTraining = contributeEnabled && savedImagePath.isNotEmpty()
                                         )
                                     )
                                     isSaved = true

@@ -13,5 +13,6 @@ data class ScanRecord(
     val severity: String,
     val notes: String = "",
     val scanDate: Long = System.currentTimeMillis(),
-    val imagePath: String = ""
+    val imagePath: String = "",
+    val contributedForTraining: Boolean = false
 )

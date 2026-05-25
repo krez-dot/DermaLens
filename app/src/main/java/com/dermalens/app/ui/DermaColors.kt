@@ -20,4 +20,5 @@ object DermaPrefs {
     const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding"
     const val KEY_FONT_SIZE = "font_size"
     const val KEY_HIGH_CONTRAST = "high_contrast"
+    const val KEY_CONTRIBUTE_DATA = "contribute_data"
 }
