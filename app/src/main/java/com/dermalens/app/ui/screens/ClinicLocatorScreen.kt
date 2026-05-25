@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class Clinic(
     val name: String,
@@ -52,12 +54,71 @@ val mockClinics = listOf(
     Clinic("Capampangan Derma Center", "McArthur Hwy, Tarlac City, Tarlac", "3.5 km", 4.5f, true, "Mon-Sat: 9:00 AM - 5:00 PM", "+63 45 982 7890", 15.4690, 120.6010),
 )
 
+private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val query = """
+                [out:json][timeout:25];
+                (
+                  node["amenity"~"clinic|hospital|doctors"](around:10000,$lat,$lng);
+                  node["healthcare"~"clinic|hospital|doctor"](around:10000,$lat,$lng);
+                );
+                out body;
+            """.trimIndent()
+            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = java.net.URL("https://overpass-api.de/api/interpreter")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 15000
+                readTimeout = 25000
+                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                outputStream.use { it.write("data=$encoded".toByteArray()) }
+            }
+            val response = conn.inputStream.bufferedReader().readText()
+            val elements = org.json.JSONObject(response).getJSONArray("elements")
+            val result = mutableListOf<Clinic>()
+            for (i in 0 until elements.length()) {
+                val el = elements.getJSONObject(i)
+                val tags = el.optJSONObject("tags") ?: continue
+                val name = tags.optString("name").takeIf { it.isNotEmpty() } ?: continue
+                val elLat = el.optDouble("lat", Double.NaN).takeIf { !it.isNaN() } ?: continue
+                val elLng = el.optDouble("lon", Double.NaN).takeIf { !it.isNaN() } ?: continue
+                val dist = haversineKm(lat, lng, elLat, elLng)
+                val addr = listOf(
+                    tags.optString("addr:housenumber"),
+                    tags.optString("addr:street"),
+                    tags.optString("addr:city")
+                ).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { "Tarlac, Philippines" }
+                val phone = tags.optString("phone").ifEmpty { tags.optString("contact:phone") }.ifEmpty { "N/A" }
+                val hours = tags.optString("opening_hours").ifEmpty { "Contact clinic for hours" }
+                result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, true, hours, phone, elLat, elLng))
+            }
+            result.sortedBy { haversineKm(lat, lng, it.lat, it.lng) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClinicLocatorScreen(navController: NavController) {
     val context = LocalContext.current
     var showMap by remember { mutableStateOf(false) }
     var selectedClinic by remember { mutableStateOf<Clinic?>(null) }
+    var clinics by remember { mutableStateOf(mockClinics) }
+    var isLoading by remember { mutableStateOf(true) }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -75,6 +136,9 @@ fun ClinicLocatorScreen(navController: NavController) {
         if (!hasLocationPermission) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
+        val fetched = fetchNearbyClinics(15.4755, 120.5963)
+        if (fetched.isNotEmpty()) clinics = fetched
+        isLoading = false
     }
 
     Scaffold(
@@ -134,7 +198,11 @@ fun ClinicLocatorScreen(navController: NavController) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Tarlac City, Tarlac", fontSize = 14.sp, color = Color(0xFF444444), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Box(modifier = Modifier.background(DermaGreenLight, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Text("${mockClinics.size} clinics found", fontSize = 12.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                    if (isLoading) {
+                        CircularProgressIndicator(color = DermaGreen, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("${clinics.size} clinics found", fontSize = 12.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
@@ -147,16 +215,20 @@ fun ClinicLocatorScreen(navController: NavController) {
                             setMultiTouchControls(true)
                             controller.setZoom(14.5)
                             controller.setCenter(GeoPoint(15.4755, 120.5963))
-                            mockClinics.forEach { clinic ->
-                                val marker = Marker(this).apply {
-                                    position = GeoPoint(clinic.lat, clinic.lng)
-                                    title = clinic.name
-                                    snippet = clinic.address
-                                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                }
-                                overlays.add(marker)
-                            }
                         }
+                    },
+                    update = { mapView ->
+                        mapView.overlays.clear()
+                        clinics.forEach { clinic ->
+                            val marker = Marker(mapView).apply {
+                                position = GeoPoint(clinic.lat, clinic.lng)
+                                title = clinic.name
+                                snippet = clinic.address
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            }
+                            mapView.overlays.add(marker)
+                        }
+                        mapView.invalidate()
                     },
                     modifier = Modifier.fillMaxWidth().height(300.dp)
                 )
@@ -171,7 +243,7 @@ fun ClinicLocatorScreen(navController: NavController) {
                         Text("Nearby Dermatology Clinics", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
                         Spacer(modifier = Modifier.height(4.dp))
                     }
-                    items(mockClinics) { clinic ->
+                    items(clinics) { clinic ->
                         CompactClinicCard(clinic = clinic, onClick = { selectedClinic = clinic })
                     }
                 }
@@ -182,7 +254,7 @@ fun ClinicLocatorScreen(navController: NavController) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(mockClinics) { clinic ->
+                    items(clinics) { clinic ->
                         FullClinicCard(clinic = clinic, onClick = { selectedClinic = clinic })
                     }
                 }
