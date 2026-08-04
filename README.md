@@ -1,11 +1,9 @@
 # DermaLens
-
 An Android skin disease detection app built with Jetpack Compose. DermaLens lets users scan their skin, track conditions over time, and find nearby dermatology clinics — developed as a Capstone Project at Tarlac State University, 2026.
 
 ---
 
 ## Features
-
 - **Skin Scan** — Capture via camera or pick from gallery; AI detects condition, severity, and confidence
 - **Scan History & Progress Tracker** — Timeline view per condition with trend indicators (improving / worsening / stable)
 - **Care Guide** — Detailed skincare routines, dos/don'ts, and treatment options for 6 common skin conditions
@@ -15,7 +13,6 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 - **Privacy Policy** — Full in-app privacy policy dialog
 
 ## Tech Stack
-
 | Layer | Technology |
 |---|---|
 | UI | Jetpack Compose + Material 3 |
@@ -29,7 +26,6 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 | Auth | SHA-256 password hashing + SharedPreferences session |
 
 ## Project Structure
-
 ```
 app/src/main/java/com/dermalens/app/
 ├── data/
@@ -51,7 +47,6 @@ app/src/main/java/com/dermalens/app/
 ```
 
 ## Building & Running
-
 1. Clone the repo
 2. Open in Android Studio (Hedgehog or later)
 3. Let Gradle sync complete
@@ -59,13 +54,26 @@ app/src/main/java/com/dermalens/app/
 
 > VS Code will show "Unresolved reference" errors on Compose/Room imports — these are fake and disappear after Gradle sync in Android Studio.
 
-## Pending
+## Development Timeline
+CP2 Development Plan — May – November 2026
 
+| Sprint | Duration | Track | Sprint Goal | Key Deliverables | Technologies | Lead | Status | Priority |
+|---|---|---|---|---|---|---|---|---|
+| Sprint 1 | May 25 – Jun 7, 2026 | App Development | Project setup, user authentication (register/login/logout), initial UI scaffolding | Login & register screens; auth flow; GitHub repo with project structure | Android Studio, Kotlin, Jetpack Compose, Firebase Auth / Room DB | Chrisent Dayniel | Not started | 🔴 Critical |
+| Sprint 2 | Jun 8 – Jun 21, 2026 | App Dev + AI | CameraX real-time integration; start YOLOv11 model training on Google Colab | Working camera capture screen; initial YOLOv11 training pipeline; preliminary model weights | CameraX, Camera2 API, Python, Ultralytics YOLO, Kaggle/Roboflow dataset | Reynaldo | Not started | 🔴 Critical |
+| Sprint 3 | Jun 22 – Jul 5, 2026 | AI + Integration | Fine-tune YOLOv11, convert to TFLite, integrate on-device inference into the app | Optimized .tflite model in APK; real-time detection screen with bounding box + confidence score | TensorFlow Lite, GPU/NNAPI delegates, Ultralytics YOLO export, Google Colab T4 | Mark Joseph | Not started | 🔴 Critical |
+| Sprint 4 | Jul 6 – Jul 19, 2026 | App Development | Detection result screen, skincare guidance content, Room DB for scan history | Complete result screen; skincare guide for all 6 conditions; working Room DB schema | Jetpack Compose, Room DB, SQLite, pre-built knowledge base JSON | Reicee Owen | Not started | 🟠 High |
+| Sprint 5 | Jul 20 – Aug 2, 2026 | App Development | Progress tracking dashboard, clinic locator via Google Maps, scan reminders | Progress tracker with charts; clinic locator with directions; WorkManager notifications | Google Maps SDK, Places API, WorkManager, MPAndroidChart / Compose Charts | Chrisent Dayniel | Not started | 🟠 High |
+| Sprint 6 | Aug 3 – Aug 16, 2026 | Testing | Full system integration, functional testing (FR1–FR11), performance testing, survey | Stable DermaLens APK; functional + performance test results; 100-respondent survey data | Android Profiler, Redmi Note 12 (Snapdragon 685, 6GB RAM), Likert scale questionnaire | All Members | Not started | 🟠 High |
+| Sprint 7 | Aug 17 – Aug 30, 2026 | Bug Fixing | Resolve bugs from testing; UI/UX polish; start Chapter 5 documentation | Refined APK; resolved bug report; Chapter 5 draft; updated methodology docs | Android Studio Debugger, Compose Previews | Mark Joseph | Not started | 🟡 Medium |
+| Sprint 8 | Aug 31 – Sep 27, 2026 | Documentation | Final documentation, complete all chapters, defense preparation | Final capstone paper (all chapters); defense slides; submitted manuscript; archived APK | Google Docs / MS Word, PowerPoint / Canva | All Members | Not started | 🟡 Medium |
+| Post-Sprint | Oct – Nov 2026 | Wrap-up | Address panel feedback, finalize approved manuscript, archive project repository | Revised approved manuscript; archived repo; all submission requirements fulfilled | GitHub, Google Drive | All Members | Not started | 🟢 Low |
+
+## Pending
 - [ ] YOLOv11 TFLite model integration (replaces `mockDetectionResults.random()` in `ScanResultScreen.kt:76`)
 - [ ] Model training with Filipino skin tone dataset (Fitzpatrick III–IV)
 
 ## Team
-
 - Mark Joseph Garcia
 - Reynaldo Manio Jr.
 - Reicee Owen Pastrana
