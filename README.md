@@ -71,6 +71,23 @@ CP2 Development Plan — May – November 2026
 
 > **AI/ML progress note (Sprint 2):** 4 of 9 skin condition classes annotated and trained as isolated single-class YOLOv11 models (Melasma, Eczema, Acne + 1 more). Multi-class merge pending resolution of annotation consistency issues before full 9-class training.
 
+## Known Limitations
+*As of now — to be updated as development progresses.*
+
+Quick list of what's real vs. not real in the app right now.
+
+| Feature | Is it real? |
+|---|---|
+| Clinic Locator | Half real — location works, but the clinic list can fall back to fake ones |
+| Skin Scan Results | Fake — random result every time |
+| Progress Tracker | Fake — sample data only |
+
+- **Clinic Locator** — Location detection works fine. But if there are no dermatology clinics found nearby (like in Capas), the app quietly shows 5 fake backup clinics (all in Tarlac City) instead — without any indicator that they're not actually nearby. Testing it somewhere without much map data will likely just show those same 5 clinics every time.
+- **Skin Scan Results** — Scanning skin doesn't actually analyze anything yet. It just randomly picks a result from a fixed list. This is the big one still needing a fix — it'll be real once the YOLOv11 model is plugged in.
+- **Progress Tracker** — The progress/history charts shown are made-up sample data (fake conditions, fake dates, fake scores). It's not pulling real scan history yet.
+
+**What IS working properly:** Login / Register / Logout, saving scans to the database (storage works, just not fed real results yet), Care Guide info pages.
+
 ## Team
 - Mark Joseph Garcia
 - Reynaldo Manio Jr.
