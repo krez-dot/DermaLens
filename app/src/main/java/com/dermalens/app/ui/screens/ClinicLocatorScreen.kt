@@ -90,14 +90,6 @@ private fun isOpenNow(hours: String): Boolean {
     } catch (e: Exception) { true }
 }
 
-val mockClinics = listOf(
-    Clinic("Tarlac Dermatology Clinic", "Macabulos Dr, Tarlac City, Tarlac", "0.8 km", 4.8f, isOpenNow("Mon-Sat: 8:00 AM - 5:00 PM"), "Mon-Sat: 8:00 AM - 5:00 PM", "+63 45 982 1234", 15.4755, 120.5963),
-    Clinic("SkinCare Specialists Tarlac", "F. Tañedo St, Tarlac City, Tarlac", "1.2 km", 4.6f, isOpenNow("Mon-Fri: 9:00 AM - 6:00 PM"), "Mon-Fri: 9:00 AM - 6:00 PM", "+63 45 982 5678", 15.4780, 120.5940),
-    Clinic("Tarlac Provincial Hospital - Derma", "San Vicente St, Tarlac City, Tarlac", "2.1 km", 4.3f, isOpenNow("Mon-Sun: 8:00 AM - 8:00 PM"), "Mon-Sun: 8:00 AM - 8:00 PM", "+63 45 982 9012", 15.4720, 120.5990),
-    Clinic("Dr. Santos Skin & Laser Clinic", "Romulo Blvd, Tarlac City, Tarlac", "2.8 km", 4.9f, isOpenNow("Tue-Sat: 10:00 AM - 7:00 PM"), "Tue-Sat: 10:00 AM - 7:00 PM", "+63 45 982 3456", 15.4800, 120.5920),
-    Clinic("Capampangan Derma Center", "McArthur Hwy, Tarlac City, Tarlac", "3.5 km", 4.5f, isOpenNow("Mon-Sat: 9:00 AM - 5:00 PM"), "Mon-Sat: 9:00 AM - 5:00 PM", "+63 45 982 7890", 15.4690, 120.6010),
-)
-
 private fun createUserDotDrawable(context: Context): Drawable {
     val dp = context.resources.displayMetrics.density
     val size = (22 * dp).toInt()
@@ -233,7 +225,7 @@ fun ClinicLocatorScreen(navController: NavController) {
     val context = LocalContext.current
     var showMap by remember { mutableStateOf(false) }
     var selectedClinic by remember { mutableStateOf<Clinic?>(null) }
-    var clinics by remember { mutableStateOf(mockClinics) }
+    var clinics by remember { mutableStateOf<List<Clinic>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var locationLabel by remember { mutableStateOf("Locating...") }
     var userLat by remember { mutableStateOf(15.4755) }
@@ -261,8 +253,7 @@ fun ClinicLocatorScreen(navController: NavController) {
         if (!hasLocationPermission) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             locationLabel = "Tarlac City, Tarlac"
-            val fetched = fetchNearbyClinics(15.4755, 120.5963)
-            if (fetched.isNotEmpty()) clinics = fetched
+            clinics = fetchNearbyClinics(15.4755, 120.5963)
             isLoading = false
         } else {
             val location = suspendCancellableCoroutine<android.location.Location?> { cont ->
@@ -282,8 +273,7 @@ fun ClinicLocatorScreen(navController: NavController) {
                 listOf(it.subLocality, it.locality, it.adminArea)
                     .filter { s -> !s.isNullOrEmpty() }.take(2).joinToString(", ")
             }?.takeIf { it.isNotEmpty() } ?: "Near you"
-            val fetched = fetchNearbyClinics(lat, lng)
-            if (fetched.isNotEmpty()) clinics = fetched
+            clinics = fetchNearbyClinics(lat, lng)
             isLoading = false
         }
     }
@@ -467,6 +457,9 @@ fun ClinicLocatorScreen(navController: NavController) {
                         Text("Nearby Dermatology Clinics", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
                         Spacer(modifier = Modifier.height(4.dp))
                     }
+                    if (!isLoading && clinics.isEmpty()) {
+                        item { EmptyClinicsState() }
+                    }
                     items(clinics) { clinic ->
                         CompactClinicCard(clinic = clinic, onClick = { selectedClinic = clinic })
                     }
@@ -478,6 +471,9 @@ fun ClinicLocatorScreen(navController: NavController) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (!isLoading && clinics.isEmpty()) {
+                        item { EmptyClinicsState() }
+                    }
                     items(clinics) { clinic ->
                         FullClinicCard(clinic = clinic, onClick = { selectedClinic = clinic })
                     }
@@ -517,6 +513,32 @@ fun ClinicLocatorScreen(navController: NavController) {
             titleContentColor = Color(0xFF111827),
             textContentColor = Color(0xFF374151)
         )
+    }
+}
+
+@Composable
+fun EmptyClinicsState() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Default.LocationOff, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(32.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("No dermatology clinics found nearby", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "We couldn't find any clinics within 15 km of your location. Try again later or search a different area.",
+                fontSize = 12.sp,
+                color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
     }
 }
 

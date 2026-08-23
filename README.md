@@ -78,11 +78,11 @@ Quick list of what's real vs. not real in the app right now.
 
 | Feature | Is it real? |
 |---|---|
-| Clinic Locator | Half real — location works, but the clinic list can fall back to fake ones |
+| Clinic Locator | Real — location + live Overpass API results; shows an honest empty state if none found nearby |
 | Skin Scan Results | Fake — random result every time |
 | Progress Tracker | Fake — sample data only |
 
-- **Clinic Locator** — Location detection works fine. But if there are no dermatology clinics found nearby (like in Capas), the app quietly shows 5 fake backup clinics (all in Tarlac City) instead — without any indicator that they're not actually nearby. Testing it somewhere without much map data will likely just show those same 5 clinics every time.
+- **Clinic Locator** — Location detection works fine, and clinic results come from the OSM Overpass API. If no dermatology clinics are found within 15 km (like in Capas), the app now shows an explicit "No dermatology clinics found nearby" state instead of silently substituting fake ones.
 - **Skin Scan Results** — Scanning skin doesn't actually analyze anything yet. It just randomly picks a result from a fixed list. This is the big one still needing a fix — it'll be real once the YOLOv11 model is plugged in.
 - **Progress Tracker** — The progress/history charts shown are made-up sample data (fake conditions, fake dates, fake scores). It's not pulling real scan history yet.
 
