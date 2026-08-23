@@ -4,7 +4,7 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 ---
 
 ## Features
-- **Skin Scan** — Capture via camera or pick from gallery; AI detects condition, severity, and confidence
+- **Skin Scan** — Capture via camera (pinch-to-zoom) or pick from gallery (pan + pinch-to-zoom to position, cropped to exactly what's in the guide frame before scanning); AI detects condition, severity, and confidence
 - **Scan History & Progress Tracker** — Timeline view per condition with trend indicators (improving / worsening / stable)
 - **Care Guide** — Detailed skincare routines, dos/don'ts, and treatment options for 6 common skin conditions
 - **Clinic Locator** — GPS-based map (OpenStreetMap + OSRM routing) to find nearby dermatology clinics
@@ -22,7 +22,7 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 | Gallery | `ActivityResultContracts.PickVisualMedia` (Android 13+) |
 | Image loading | Coil (`AsyncImage`) |
 | Maps | OSMDroid + OSRM routing API |
-| AI Model | YOLOv11 TFLite *(pending integration)* |
+| AI Model | YOLOv11 TFLite — pipeline verified working end-to-end on-device with a single-class test model; auto-detects channels-first/-last tensor layout; final multi-class model still pending |
 | Auth | Salted SHA-256 password hashing + SharedPreferences session |
 
 ## Project Structure
@@ -61,7 +61,7 @@ CP2 Development Plan — May – November 2026
 |---|---|---|---|---|---|---|---|---|
 | Sprint 1 | May 25 – Jun 7, 2026 | App Development | Project setup, user authentication (register/login/logout), initial UI scaffolding | Login & register screens; auth flow; GitHub repo with project structure | Android Studio, Kotlin, Jetpack Compose, Firebase Auth / Room DB | Chrisent Dayniel | ✅ Done | 🔴 Critical |
 | Sprint 2 | Jun 8 – Jun 21, 2026 | App Dev + AI | CameraX real-time integration; start YOLOv11 model training on Google Colab | Working camera capture screen; initial YOLOv11 training pipeline; preliminary model weights | CameraX, Camera2 API, Python, Ultralytics YOLO, Kaggle/Roboflow dataset | Reynaldo | 🔄 In Progress | 🔴 Critical |
-| Sprint 3 | Jun 22 – Jul 5, 2026 | AI + Integration | Fine-tune YOLOv11, convert to TFLite, integrate on-device inference into the app | Optimized .tflite model in APK; real-time detection screen with bounding box + confidence score | TensorFlow Lite, GPU/NNAPI delegates, Ultralytics YOLO export, Google Colab T4 | Mark Joseph | ⬜ Not started | 🔴 Critical |
+| Sprint 3 | Jun 22 – Jul 5, 2026 | AI + Integration | Fine-tune YOLOv11, convert to TFLite, integrate on-device inference into the app | Optimized .tflite model in APK; real-time detection screen with bounding box + confidence score | TensorFlow Lite, GPU/NNAPI delegates, Ultralytics YOLO export, Google Colab T4 | Mark Joseph | 🔄 In Progress | 🔴 Critical |
 | Sprint 4 | Jul 6 – Jul 19, 2026 | App Development | Detection result screen, skincare guidance content, Room DB for scan history | Complete result screen; skincare guide for all 6 conditions; working Room DB schema | Jetpack Compose, Room DB, SQLite, pre-built knowledge base JSON | Reicee Owen | ✅ Done | 🟠 High |
 | Sprint 5 | Jul 20 – Aug 2, 2026 | App Development | Progress tracking dashboard, clinic locator via Google Maps, scan reminders | Progress tracker with charts; clinic locator with directions; WorkManager notifications | Google Maps SDK, Places API, WorkManager, MPAndroidChart / Compose Charts | Chrisent Dayniel | ✅ Done | 🟠 High |
 | Sprint 6 | Aug 3 – Aug 16, 2026 | Testing | Full system integration, functional testing (FR1–FR11), performance testing, survey | Stable DermaLens APK; functional + performance test results; 100-respondent survey data | Android Profiler, Redmi Note 12 (Snapdragon 685, 6GB RAM), Likert scale questionnaire | All Members | ⬜ Not started | 🟠 High |
@@ -70,6 +70,8 @@ CP2 Development Plan — May – November 2026
 | Post-Sprint | Oct – Nov 2026 | Wrap-up | Address panel feedback, finalize approved manuscript, archive project repository | Revised approved manuscript; archived repo; all submission requirements fulfilled | GitHub, Google Drive | All Members | ⬜ Not started | 🟢 Low |
 
 > **AI/ML progress note (Sprint 2):** 4 of 9 skin condition classes annotated and trained as isolated single-class YOLOv11 models (Melasma, Eczema, Acne + 1 more). Multi-class merge pending resolution of annotation consistency issues before full 9-class training.
+>
+> **AI/ML progress note (Sprint 7):** The Melasma single-class model was exported to TFLite and tested end-to-end on a real device — correctly classified a real melasma photo at 77.7% confidence. This confirmed the app-side integration works and surfaced two real export details worth knowing for the other classes: (1) this export uses a channels-first `[1,3,H,W]` tensor layout rather than the usual channels-last `[1,H,W,3]` — the app now auto-detects either; (2) the model expects a plain stretch-to-square resize, not letterboxing — consistent with Roboflow's default "Resize: Stretch" preprocessing. See `HANDOFF.md` for the integration steps once the merged multi-class model is ready.
 
 ## Known Limitations
 *As of now — to be updated as development progresses.*
@@ -79,15 +81,15 @@ Quick list of what's real vs. not real in the app right now.
 | Feature | Is it real? |
 |---|---|
 | Clinic Locator | Real — location + live Overpass API results; shows an honest empty state if none found nearby |
-| Skin Scan Results | Fake — random result every time (both camera and gallery capture now feed a real image into the pipeline; YOLOv11 integration is scaffolded and just needs the trained model dropped in) |
+| Skin Scan Results | Fake by default (random result) since no model ships in the repo yet — but the real pipeline is built and verified working locally with a single-class test model |
 | Progress Tracker | Real — pulls actual scan history from Room DB, grouped by condition with trend indicators |
 
 - **Clinic Locator** — Location detection works fine, and clinic results come from the OSM Overpass API (exact `healthcare:speciality=dermatology` tag match only — a regex name search was tried and removed after confirming it consistently times out on Overpass's public instance regardless of query shape, silently contributing zero results). If no dermatology clinics are found within 15 km (like in Capas), the app shows an explicit "No dermatology clinics found nearby" state instead of silently substituting fake ones.
-- **Skin Scan Results** — Scanning skin doesn't actually analyze anything yet. It just randomly picks a result from a fixed list. The inference wrapper (`ml/YoloDetector.kt`) is ready — it'll go live once the trained `.tflite` model is dropped into `assets/`. The live camera now actually captures a photo via `ImageCapture` (previously it only faked a delay and never took a picture — real image data only ever reached the pipeline via the gallery picker).
+- **Skin Scan Results** — Ships with `mockDetectionResults.random()` as the default, since no `.tflite` model is committed to the repo (large binaries belong in Drive/Colab, not git — see `.gitignore`). The real inference path (`ml/YoloDetector.kt`) is fully implemented and was verified end-to-end on a physical device with a real single-class Melasma model: correct classification, sensible confidence (77.7% on a clean clinical photo). Drop a `.tflite` into `app/src/main/assets/` and update the class list to go live — see `HANDOFF.md`. The live camera now actually captures a photo via `ImageCapture` with pinch-to-zoom (previously it only faked a delay and never took a picture), and gallery-picked photos can be panned/zoomed and get cropped to exactly the guide frame before scanning.
 - **Progress Tracker** — Pulls real scan history from Room DB, grouped by condition with trend indicators. (Earlier versions of this doc incorrectly listed this as sample data — it wasn't.)
 - **Scan Reminders** — The Profile toggle now actually persists and enables/disables the daily reminder worker; it previously reset to ON on every visit and didn't affect anything.
 
-**What IS working properly:** Login / Register / Logout (passwords are salted + hashed, not stored in plain text), Edit Profile (with duplicate-email and blank-name validation), saving scans to the database (storage works, just not fed real results yet), Care Guide info pages, Progress Tracker, Scan Reminders.
+**What IS working properly:** Login / Register / Logout (passwords are salted + hashed, not stored in plain text), Edit Profile (with duplicate-email and blank-name validation), saving scans to the database (storage works, just not fed real results yet by default), Care Guide info pages, Progress Tracker, Scan Reminders. A security pass (`SECURITY_TESTING.md`) closed out the only two real findings found (unused cleartext traffic permission, DB not excluded from Android backup) — nothing high or medium severity remains open.
 
 ## Team
 - Mark Joseph Garcia
