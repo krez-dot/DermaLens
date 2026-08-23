@@ -146,48 +146,57 @@ private fun createMarkerDrawable(context: Context): Drawable {
 
 private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
     return withContext(Dispatchers.IO) {
-        try {
-            val query = """
-                [out:json][timeout:25];
-                (
-                  node["healthcare:speciality"="dermatology"](around:15000,$lat,$lng);
-                  node["name"~"derma|skin care|skincare|skin clinic|laser skin|acne|eczema",i](around:15000,$lat,$lng);
-                );
-                out body;
-            """.trimIndent()
-            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-            val url = java.net.URL("https://overpass-api.de/api/interpreter")
-            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
-                requestMethod = "POST"
-                doOutput = true
-                connectTimeout = 15000
-                readTimeout = 25000
-                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                outputStream.use { it.write("data=$encoded".toByteArray()) }
-            }
-            val response = conn.inputStream.bufferedReader().readText()
-            val elements = org.json.JSONObject(response).getJSONArray("elements")
-            val result = mutableListOf<Clinic>()
-            for (i in 0 until elements.length()) {
-                val el = elements.getJSONObject(i)
-                val tags = el.optJSONObject("tags") ?: continue
-                val name = tags.optString("name").takeIf { it.isNotEmpty() } ?: continue
-                val elLat = el.optDouble("lat", Double.NaN).takeIf { !it.isNaN() } ?: continue
-                val elLng = el.optDouble("lon", Double.NaN).takeIf { !it.isNaN() } ?: continue
-                val dist = haversineKm(lat, lng, elLat, elLng)
-                val addr = listOf(
-                    tags.optString("addr:housenumber"),
-                    tags.optString("addr:street"),
-                    tags.optString("addr:city")
-                ).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { "Tarlac, Philippines" }
-                val phone = tags.optString("phone").ifEmpty { tags.optString("contact:phone") }.ifEmpty { "N/A" }
-                val hours = tags.optString("opening_hours").ifEmpty { "Contact clinic for hours" }
-                result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, isOpenNow(hours), hours, phone, elLat, elLng))
-            }
-            result.sortedBy { haversineKm(lat, lng, it.lat, it.lng) }
-        } catch (e: Exception) {
-            emptyList()
+        // Only an exact tag match is used here. A regex name search (e.g. name~"derma|skin...")
+        // was tried and removed: Overpass's public instance can use its index for an exact
+        // ["healthcare:speciality"="dermatology"] lookup, but any regex match on "name" forces
+        // an unindexed scan that consistently timed out (25-34s, confirmed across several query
+        // shapes) and contributed zero results in practice -- it's not worth the latency or the
+        // complexity of merging a query that never actually completes.
+        val tagQuery = """
+            [out:json][timeout:25];
+            node["healthcare:speciality"="dermatology"](around:15000,$lat,$lng);
+            out body;
+        """.trimIndent()
+
+        val elements = runOverpassQuery(tagQuery)
+        val result = mutableListOf<Clinic>()
+        for (el in elements) {
+            val tags = el.optJSONObject("tags") ?: continue
+            val name = tags.optString("name").takeIf { it.isNotEmpty() } ?: continue
+            val elLat = el.optDouble("lat", Double.NaN).takeIf { !it.isNaN() } ?: continue
+            val elLng = el.optDouble("lon", Double.NaN).takeIf { !it.isNaN() } ?: continue
+            val dist = haversineKm(lat, lng, elLat, elLng)
+            val addr = listOf(
+                tags.optString("addr:housenumber"),
+                tags.optString("addr:street"),
+                tags.optString("addr:city")
+            ).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { "Tarlac, Philippines" }
+            val phone = tags.optString("phone").ifEmpty { tags.optString("contact:phone") }.ifEmpty { "N/A" }
+            val hours = tags.optString("opening_hours").ifEmpty { "Contact clinic for hours" }
+            result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, isOpenNow(hours), hours, phone, elLat, elLng))
         }
+        result.sortedBy { haversineKm(lat, lng, it.lat, it.lng) }
+    }
+}
+
+/** Runs a single Overpass query, returning its elements, or an empty list on any failure/timeout. */
+private fun runOverpassQuery(query: String): List<org.json.JSONObject> {
+    return try {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val url = java.net.URL("https://overpass-api.de/api/interpreter")
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 15000
+            readTimeout = 30000
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            outputStream.use { it.write("data=$encoded".toByteArray()) }
+        }
+        val response = conn.inputStream.bufferedReader().readText()
+        val elements = org.json.JSONObject(response).getJSONArray("elements")
+        (0 until elements.length()).map { elements.getJSONObject(it) }
+    } catch (e: Exception) {
+        emptyList()
     }
 }
 

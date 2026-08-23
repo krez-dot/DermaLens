@@ -83,7 +83,10 @@ fun CameraPreviewScreen(navController: NavController) {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            val capture = ImageCapture.Builder().build()
+            val capture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setTargetResolution(android.util.Size(1280, 1280))
+                .build()
             val cameraSelector = if (frontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             try {
                 cameraProvider.unbindAll()
