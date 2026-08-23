@@ -11,8 +11,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -34,6 +37,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** A detection box normalized to [0,1] relative to the analyzed image, left/top/right/bottom. */
+data class NormalizedBox(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
 data class DetectionResult(
     val condition: String,
     val confidence: Float,
@@ -41,7 +47,8 @@ data class DetectionResult(
     val description: String,
     val symptoms: List<String>,
     val recommendation: String,
-    val color: Color
+    val color: Color,
+    val boundingBoxes: List<NormalizedBox> = emptyList()
 )
 
 val mockDetectionResults = listOf(
@@ -104,6 +111,9 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
     }
     val result = loadedResult!!
     var isSaved by remember { mutableStateOf(false) }
+    // Matches the image's real aspect ratio once loaded so the overlay box (normalized 0..1 to
+    // the image itself) lines up pixel-for-pixel with no letterbox offset to account for.
+    var imageAspectRatio by remember(imageUri) { mutableStateOf(1f) }
 
     Scaffold(
         topBar = {
@@ -135,7 +145,11 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Box(
-                        modifier = Modifier.size(110.dp).clip(RoundedCornerShape(20.dp)).border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .aspectRatio(imageAspectRatio)
+                            .clip(RoundedCornerShape(20.dp))
+                            .border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (imageUri != null) {
@@ -143,8 +157,29 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                                 model = android.net.Uri.parse(imageUri),
                                 contentDescription = "Scanned image",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Fit,
+                                onSuccess = { state ->
+                                    val w = state.result.drawable.intrinsicWidth
+                                    val h = state.result.drawable.intrinsicHeight
+                                    if (w > 0 && h > 0) imageAspectRatio = w.toFloat() / h.toFloat()
+                                }
                             )
+                            if (result.boundingBoxes.isNotEmpty()) {
+                                Canvas(modifier = Modifier.fillMaxSize().semantics { contentDescription = "${result.boundingBoxes.size} detected area(s) highlighted on scanned image" }) {
+                                    result.boundingBoxes.forEach { box ->
+                                        val left = box.left * size.width
+                                        val top = box.top * size.height
+                                        val right = box.right * size.width
+                                        val bottom = box.bottom * size.height
+                                        drawRect(
+                                            color = Color.White,
+                                            topLeft = Offset(left, top),
+                                            size = Size((right - left).coerceAtLeast(0f), (bottom - top).coerceAtLeast(0f)),
+                                            style = Stroke(width = 3.dp.toPx())
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

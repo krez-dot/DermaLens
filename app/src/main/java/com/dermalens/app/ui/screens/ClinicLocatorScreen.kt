@@ -9,6 +9,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.tilesource.XYTileSource
@@ -50,7 +52,6 @@ data class Clinic(
     val name: String,
     val address: String,
     val distance: String,
-    val rating: Float,
     val openNow: Boolean,
     val hours: String,
     val phone: String,
@@ -144,6 +145,14 @@ private fun createMarkerDrawable(context: Context): Drawable {
     return BitmapDrawable(context.resources, bitmap)
 }
 
+private fun isNetworkAvailable(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+    val network = cm.activeNetwork ?: return false
+    val capabilities = cm.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+}
+
 private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
     return withContext(Dispatchers.IO) {
         // Only an exact tag match is used here. A regex name search (e.g. name~"derma|skin...")
@@ -173,7 +182,7 @@ private suspend fun fetchNearbyClinics(lat: Double, lng: Double): List<Clinic> {
             ).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { "Tarlac, Philippines" }
             val phone = tags.optString("phone").ifEmpty { tags.optString("contact:phone") }.ifEmpty { "N/A" }
             val hours = tags.optString("opening_hours").ifEmpty { "Contact clinic for hours" }
-            result.add(Clinic(name, addr, "%.1f km".format(dist), 4.5f, isOpenNow(hours), hours, phone, elLat, elLng))
+            result.add(Clinic(name, addr, "%.1f km".format(dist), isOpenNow(hours), hours, phone, elLat, elLng))
         }
         result.sortedBy { haversineKm(lat, lng, it.lat, it.lng) }
     }
@@ -236,6 +245,8 @@ fun ClinicLocatorScreen(navController: NavController) {
     var selectedClinic by remember { mutableStateOf<Clinic?>(null) }
     var clinics by remember { mutableStateOf<List<Clinic>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var isOffline by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableStateOf(0) }
     var locationLabel by remember { mutableStateOf("Locating...") }
     var userLat by remember { mutableStateOf(15.4755) }
     var userLng by remember { mutableStateOf(120.5963) }
@@ -258,7 +269,19 @@ fun ClinicLocatorScreen(navController: NavController) {
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
     }
 
-    LaunchedEffect(hasLocationPermission) {
+    LaunchedEffect(hasLocationPermission, retryTrigger) {
+        isLoading = true
+        isOffline = false
+
+        if (!isNetworkAvailable(context)) {
+            isOffline = true
+            isLoading = false
+            if (!hasLocationPermission) {
+                permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
+            return@LaunchedEffect
+        }
+
         if (!hasLocationPermission) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             locationLabel = "Tarlac City, Tarlac"
@@ -466,7 +489,9 @@ fun ClinicLocatorScreen(navController: NavController) {
                         Text("Nearby Dermatology Clinics", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
                         Spacer(modifier = Modifier.height(4.dp))
                     }
-                    if (!isLoading && clinics.isEmpty()) {
+                    if (!isLoading && isOffline) {
+                        item { OfflineClinicsState(onRetry = { retryTrigger++ }, onBackToHome = { navController.popBackStack() }) }
+                    } else if (!isLoading && clinics.isEmpty()) {
                         item { EmptyClinicsState() }
                     }
                     items(clinics) { clinic ->
@@ -480,7 +505,9 @@ fun ClinicLocatorScreen(navController: NavController) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (!isLoading && clinics.isEmpty()) {
+                    if (!isLoading && isOffline) {
+                        item { OfflineClinicsState(onRetry = { retryTrigger++ }, onBackToHome = { navController.popBackStack() }) }
+                    } else if (!isLoading && clinics.isEmpty()) {
                         item { EmptyClinicsState() }
                     }
                     items(clinics) { clinic ->
@@ -508,7 +535,6 @@ fun ClinicLocatorScreen(navController: NavController) {
                     DetailRow(icon = Icons.Default.LocationOn, text = clinic.address)
                     DetailRow(icon = Icons.Default.AccessTime, text = clinic.hours)
                     DetailRow(icon = Icons.Default.Phone, text = clinic.phone)
-                    DetailRow(icon = Icons.Default.Star, text = "${clinic.rating} / 5.0 rating")
                     DetailRow(icon = Icons.Default.Circle, text = if (clinic.openNow) "Open Now" else "Closed", textColor = if (clinic.openNow) Color(0xFF2E7D32) else Color(0xFFC62828))
                 }
             },
@@ -522,6 +548,45 @@ fun ClinicLocatorScreen(navController: NavController) {
             titleContentColor = Color(0xFF111827),
             textContentColor = Color(0xFF374151)
         )
+    }
+}
+
+@Composable
+fun OfflineClinicsState(onRetry: () -> Unit, onBackToHome: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Default.WifiOff, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(32.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("No Internet Connection", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1a1a1a))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "The clinic locator requires an internet connection to find nearby dermatology clinics and get real-time information.",
+                fontSize = 12.sp,
+                color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = DermaGreen),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Retry")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = onBackToHome) {
+                Text("Back to Home", color = Color.Gray)
+            }
+        }
     }
 }
 
@@ -601,13 +666,6 @@ fun FullClinicCard(clinic: Clinic, onClick: () -> Unit) {
                         Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(clinic.distance, fontSize = 12.sp, color = Color.Gray)
-                    }
-                }
-                Box(modifier = Modifier.background(Color(0xFFFFF9C4), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF9A825), modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("${clinic.rating}", fontSize = 12.sp, color = Color(0xFFF9A825), fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Box(modifier = Modifier.background(if (clinic.openNow) Color(0xFFE8F5E9) else Color(0xFFFFEBEE), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {

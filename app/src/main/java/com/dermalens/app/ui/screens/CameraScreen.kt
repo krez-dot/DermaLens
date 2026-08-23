@@ -114,20 +114,39 @@ private fun cropGalleryImageToFrame(
 @Composable
 fun ScanScreen(navController: NavController) {
     val context = LocalContext.current
+    val activity = context as? android.app.Activity
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
+    // Once the user denies without a rationale being showable again, Android won't re-prompt --
+    // the only way back in is the system Settings screen.
+    var permanentlyDenied by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { granted -> hasCameraPermission = granted }
+    ) { granted ->
+        hasCameraPermission = granted
+        if (!granted && activity != null) {
+            permanentlyDenied = !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
     if (hasCameraPermission) CameraPreviewScreen(navController)
-    else CameraPermissionDeniedScreen(onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) }, navController = navController)
+    else CameraPermissionDeniedScreen(
+        onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+        onOpenSettings = {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", context.packageName, null)
+            }
+            context.startActivity(intent)
+        },
+        permanentlyDenied = permanentlyDenied,
+        navController = navController
+    )
 }
 
 @Composable
@@ -395,7 +414,12 @@ fun CameraPreviewScreen(navController: NavController) {
 }
 
 @Composable
-fun CameraPermissionDeniedScreen(onRequestPermission: () -> Unit, navController: NavController) {
+fun CameraPermissionDeniedScreen(
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    permanentlyDenied: Boolean,
+    navController: NavController
+) {
     Scaffold(bottomBar = { DermaBottomNavBar(navController) }) { innerPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(32.dp).background(Color.White),
@@ -411,15 +435,21 @@ fun CameraPermissionDeniedScreen(onRequestPermission: () -> Unit, navController:
             Spacer(modifier = Modifier.height(24.dp))
             Text("Camera Access Required", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827), textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(10.dp))
-            Text("DermaLens needs camera access to scan your skin for conditions. Please grant camera permission to continue.", fontSize = 14.sp, color = Color(0xFF6B7280), textAlign = TextAlign.Center, lineHeight = 22.sp)
+            Text(
+                if (permanentlyDenied)
+                    "Camera access was denied and can no longer be requested from within the app. Please enable it from Settings to continue."
+                else
+                    "DermaLens needs camera access to scan your skin for conditions. Please grant camera permission to continue.",
+                fontSize = 14.sp, color = Color(0xFF6B7280), textAlign = TextAlign.Center, lineHeight = 22.sp
+            )
             Spacer(modifier = Modifier.height(32.dp))
             Button(
-                onClick = onRequestPermission,
+                onClick = if (permanentlyDenied) onOpenSettings else onRequestPermission,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
             ) {
-                Text("Grant Camera Permission", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (permanentlyDenied) "Open Settings" else "Grant Camera Permission", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(

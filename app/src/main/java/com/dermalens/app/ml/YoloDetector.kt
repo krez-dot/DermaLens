@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import com.dermalens.app.ui.screens.DetectionResult
+import com.dermalens.app.ui.screens.NormalizedBox
 import com.dermalens.app.ui.screens.mockDetectionResults
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
@@ -58,11 +59,11 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             val values = FloatArray(outputSize)
             outputBuffer.asFloatBuffer().get(values)
 
-            val (classIndex, confidence) = bestClass(values, outputShape)
-            Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence")
+            val (classIndex, confidence, boxes) = bestClass(values, outputShape, inputWidth, inputHeight)
+            Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence boxes=$boxes")
             val label = CLASS_LABELS.getOrNull(classIndex) ?: return null
             val template = conditionTemplates[label] ?: return null
-            template.copy(confidence = (confidence * 100f).coerceIn(0f, 100f))
+            template.copy(confidence = (confidence * 100f).coerceIn(0f, 100f), boundingBoxes = boxes)
         }
     } catch (e: Exception) {
         Log.e("DermaLens", "YOLO inference failed", e)
@@ -120,23 +121,29 @@ private fun preprocess(bitmap: Bitmap, width: Int, height: Int, channelsFirst: B
     return buffer
 }
 
+private const val BOX_CONFIDENCE_THRESHOLD = 0.25f // Ultralytics' standard candidate-box cutoff
+private const val NMS_IOU_THRESHOLD = 0.45f // Ultralytics' standard NMS overlap cutoff
+
 /**
- * Picks the highest-confidence class from the model's raw output.
+ * Picks the highest-confidence class from the model's raw output, along with every distinct
+ * region of that class found in the image (normalized to [0,1] relative to the model's square
+ * input), for drawing on the result screen. A condition like melasma is often bilateral, so
+ * collapsing to a single "best" box would silently hide a second affected region.
  *
- *  - Plain classifier [1, numClasses]: argmax directly (handled below).
- *  - YOLO detection head [1, 4+numClasses, numBoxes] or [1, numBoxes, 4+numClasses]:
- *    treated here as "does this class appear anywhere in the image" by taking the max
- *    score per class across all boxes -- fine for whole-image diagnosis since this screen
- *    doesn't render bounding boxes, but revisit if you later need localization.
+ *  - Plain classifier [1, numClasses]: argmax directly, no boxes (nothing to localize).
+ *  - YOLO detection head [1, 4+numClasses, numBoxes] or [1, numBoxes, 4+numClasses]: every
+ *    candidate box scoring above [BOX_CONFIDENCE_THRESHOLD] for the winning class is kept, then
+ *    non-max suppression collapses duplicate/overlapping detections of the same region while
+ *    keeping genuinely separate ones (e.g. left cheek and right cheek).
  */
-private fun bestClass(values: FloatArray, shape: IntArray): Pair<Int, Float> {
+private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inputHeight: Int): Triple<Int, Float, List<NormalizedBox>> {
     if (shape.size == 2) {
         var bestIdx = 0
         var bestVal = values[0]
         for (i in values.indices) {
             if (values[i] > bestVal) { bestVal = values[i]; bestIdx = i }
         }
-        return bestIdx to bestVal
+        return Triple(bestIdx, bestVal, emptyList())
     }
 
     val numClasses = CLASS_LABELS.size
@@ -145,14 +152,16 @@ private fun bestClass(values: FloatArray, shape: IntArray): Pair<Int, Float> {
     val numChannels = if (channelsFirst) dims[0] else dims.getOrElse(1) { numClasses + 4 }
     val numBoxes = if (channelsFirst) dims.getOrElse(1) { 1 } else dims[0]
 
+    fun valueAt(channel: Int, box: Int): Float {
+        val idx = if (channelsFirst) channel * numBoxes + box else box * numChannels + channel
+        return if (idx < values.size) values[idx] else 0f
+    }
+
     val classScores = FloatArray(numClasses)
     for (box in 0 until numBoxes) {
         for (c in 0 until numClasses) {
-            val channel = 4 + c
-            val idx = if (channelsFirst) channel * numBoxes + box else box * numChannels + channel
-            if (idx < values.size) {
-                classScores[c] = maxOf(classScores[c], values[idx])
-            }
+            val score = valueAt(4 + c, box)
+            if (score > classScores[c]) classScores[c] = score
         }
     }
     var bestIdx = 0
@@ -160,5 +169,53 @@ private fun bestClass(values: FloatArray, shape: IntArray): Pair<Int, Float> {
     for (i in classScores.indices) {
         if (classScores[i] > bestVal) { bestVal = classScores[i]; bestIdx = i }
     }
-    return bestIdx to bestVal
+
+    // Ultralytics TFLite detection heads emit box center/size either already normalized to
+    // [0,1], or in pixel units relative to the input size, depending on export settings -- a
+    // normalized coordinate can never exceed 1, so use that to tell which convention this
+    // export uses instead of assuming.
+    fun toNormalizedBox(box: Int): NormalizedBox {
+        val rawCx = valueAt(0, box)
+        val rawCy = valueAt(1, box)
+        val rawW = valueAt(2, box)
+        val rawH = valueAt(3, box)
+        val looksNormalized = rawCx <= 1.5f && rawCy <= 1.5f && rawW <= 1.5f && rawH <= 1.5f
+        val cx = if (looksNormalized) rawCx else rawCx / inputWidth
+        val cy = if (looksNormalized) rawCy else rawCy / inputHeight
+        val w = if (looksNormalized) rawW else rawW / inputWidth
+        val h = if (looksNormalized) rawH else rawH / inputHeight
+        return NormalizedBox(
+            left = (cx - w / 2f).coerceIn(0f, 1f),
+            top = (cy - h / 2f).coerceIn(0f, 1f),
+            right = (cx + w / 2f).coerceIn(0f, 1f),
+            bottom = (cy + h / 2f).coerceIn(0f, 1f)
+        )
+    }
+
+    val candidates = (0 until numBoxes)
+        .map { box -> box to valueAt(4 + bestIdx, box) }
+        .filter { (_, score) -> score >= BOX_CONFIDENCE_THRESHOLD }
+        .sortedByDescending { (_, score) -> score }
+        .map { (box, score) -> toNormalizedBox(box) to score }
+
+    val kept = mutableListOf<NormalizedBox>()
+    for ((candidateBox, _) in candidates) {
+        if (kept.none { iou(it, candidateBox) > NMS_IOU_THRESHOLD }) {
+            kept.add(candidateBox)
+        }
+    }
+
+    return Triple(bestIdx, bestVal, kept)
+}
+
+private fun iou(a: NormalizedBox, b: NormalizedBox): Float {
+    val left = maxOf(a.left, b.left)
+    val top = maxOf(a.top, b.top)
+    val right = minOf(a.right, b.right)
+    val bottom = minOf(a.bottom, b.bottom)
+    val intersection = (right - left).coerceAtLeast(0f) * (bottom - top).coerceAtLeast(0f)
+    val areaA = (a.right - a.left) * (a.bottom - a.top)
+    val areaB = (b.right - b.left) * (b.bottom - b.top)
+    val union = areaA + areaB - intersection
+    return if (union <= 0f) 0f else intersection / union
 }

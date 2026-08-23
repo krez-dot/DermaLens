@@ -196,6 +196,17 @@ fun ProgressTrackerScreen(navController: NavController) {
                             textAlign = TextAlign.Center,
                             lineHeight = 20.sp
                         )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = { navController.navigate(Screen.Scan.route) },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Start Your First Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -215,16 +226,18 @@ fun ProgressTrackerScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            item {
-                Button(
-                    onClick = { navController.navigate(Screen.Scan.route) },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
-                ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Start New Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+            if (conditionTracks.isNotEmpty()) {
+                item {
+                    Button(
+                        onClick = { navController.navigate(Screen.Scan.route) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Start New Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
