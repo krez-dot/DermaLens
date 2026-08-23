@@ -154,7 +154,8 @@ fun LoginScreen(navController: NavController) {
                     if (validate()) {
                         isLoading = true
                         scope.launch {
-                            val user = db.userDao().login(email.trim(), hashPassword(password))
+                            val candidate = db.userDao().getUserByEmail(email.trim())
+                            val user = candidate?.takeIf { verifyPassword(password, it.passwordHash) }
                             isLoading = false
                             if (user != null) {
                                 prefs.edit().apply {
@@ -283,14 +284,19 @@ fun RegisterScreen(navController: NavController) {
                     if (validate()) {
                         isLoading = true
                         scope.launch {
-                            val emailTaken = db.userDao().emailExists(email.trim()) > 0
-                            if (emailTaken) { registerError = "An account with this email already exists."; isLoading = false }
-                            else {
-                                db.userDao().insertUser(User(fullName = name.trim(), email = email.trim(), passwordHash = hashPassword(password)))
-                                val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                                prefs.edit().putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true).putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
+                            try {
+                                val emailTaken = db.userDao().emailExists(email.trim()) > 0
+                                if (emailTaken) { registerError = "An account with this email already exists."; isLoading = false }
+                                else {
+                                    db.userDao().insertUser(User(fullName = name.trim(), email = email.trim(), passwordHash = hashPassword(password)))
+                                    val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                                    prefs.edit().putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true).putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
+                                    isLoading = false
+                                    navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
+                                }
+                            } catch (e: android.database.sqlite.SQLiteConstraintException) {
+                                registerError = "An account with this email already exists."
                                 isLoading = false
-                                navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
                             }
                         }
                     }
@@ -343,8 +349,8 @@ fun RegisterScreen(navController: NavController) {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     PrivacySection("Data We Collect", "We collect your name, email address, and skin scan images you choose to submit. Scan results including condition, severity, and confidence scores are stored locally on your device.")
                     PrivacySection("How We Use Your Data", "Your data is used solely to provide personalized skin health tracking within the app. If you enable 'Contribute to Research', anonymized scan data may be used to improve our detection model.")
-                    PrivacySection("Data Storage", "All personal data is stored locally on your device using encrypted storage. We do not sell, rent, or share your personal information with third parties.")
-                    PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed data is anonymized before use.")
+                    PrivacySection("Data Storage", "All personal data is stored locally on your device. Your password is never stored in plain text -- it is salted and hashed before being saved. We do not sell, rent, or share your personal information with third parties.")
+                    PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed images are currently kept only on your device and are not uploaded anywhere.")
                     PrivacySection("Your Rights", "You may delete your account and all associated data at any time. Scan records can be individually deleted from the Progress Tracker.")
                     PrivacySection("Medical Disclaimer", "DermaLens is for informational reference only and does not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")
                     PrivacySection("Contact", "For privacy concerns, contact us through the app's feedback channel.")

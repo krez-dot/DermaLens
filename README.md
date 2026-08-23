@@ -23,7 +23,7 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 | Image loading | Coil (`AsyncImage`) |
 | Maps | OSMDroid + OSRM routing API |
 | AI Model | YOLOv11 TFLite *(pending integration)* |
-| Auth | SHA-256 password hashing + SharedPreferences session |
+| Auth | Salted SHA-256 password hashing + SharedPreferences session |
 
 ## Project Structure
 ```
@@ -79,14 +79,15 @@ Quick list of what's real vs. not real in the app right now.
 | Feature | Is it real? |
 |---|---|
 | Clinic Locator | Real — location + live Overpass API results; shows an honest empty state if none found nearby |
-| Skin Scan Results | Fake — random result every time |
-| Progress Tracker | Fake — sample data only |
+| Skin Scan Results | Fake — random result every time (both camera and gallery capture now feed a real image into the pipeline; YOLOv11 integration is scaffolded and just needs the trained model dropped in) |
+| Progress Tracker | Real — pulls actual scan history from Room DB, grouped by condition with trend indicators |
 
-- **Clinic Locator** — Location detection works fine, and clinic results come from the OSM Overpass API. If no dermatology clinics are found within 15 km (like in Capas), the app now shows an explicit "No dermatology clinics found nearby" state instead of silently substituting fake ones.
-- **Skin Scan Results** — Scanning skin doesn't actually analyze anything yet. It just randomly picks a result from a fixed list. This is the big one still needing a fix — it'll be real once the YOLOv11 model is plugged in.
-- **Progress Tracker** — The progress/history charts shown are made-up sample data (fake conditions, fake dates, fake scores). It's not pulling real scan history yet.
+- **Clinic Locator** — Location detection works fine, and clinic results come from the OSM Overpass API. If no dermatology clinics are found within 15 km (like in Capas), the app shows an explicit "No dermatology clinics found nearby" state instead of silently substituting fake ones.
+- **Skin Scan Results** — Scanning skin doesn't actually analyze anything yet. It just randomly picks a result from a fixed list. The inference wrapper (`ml/YoloDetector.kt`) is ready — it'll go live once the trained `.tflite` model is dropped into `assets/`. The live camera now actually captures a photo via `ImageCapture` (previously it only faked a delay and never took a picture — real image data only ever reached the pipeline via the gallery picker).
+- **Progress Tracker** — Pulls real scan history from Room DB, grouped by condition with trend indicators. (Earlier versions of this doc incorrectly listed this as sample data — it wasn't.)
+- **Scan Reminders** — The Profile toggle now actually persists and enables/disables the daily reminder worker; it previously reset to ON on every visit and didn't affect anything.
 
-**What IS working properly:** Login / Register / Logout, saving scans to the database (storage works, just not fed real results yet), Care Guide info pages.
+**What IS working properly:** Login / Register / Logout (passwords are salted + hashed, not stored in plain text), Edit Profile (with duplicate-email and blank-name validation), saving scans to the database (storage works, just not fed real results yet), Care Guide info pages, Progress Tracker, Scan Reminders.
 
 ## Team
 - Mark Joseph Garcia

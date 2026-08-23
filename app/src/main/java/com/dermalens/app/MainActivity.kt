@@ -22,10 +22,14 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
+        if (isGranted && remindersEnabled()) {
             NotificationScheduler.scheduleDailyReminder(this)
         }
     }
+
+    private fun remindersEnabled(): Boolean =
+        getSharedPreferences(DermaPrefs.PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(DermaPrefs.KEY_NOTIFICATIONS_ENABLED, true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,10 +39,10 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
+            } else if (remindersEnabled()) {
                 NotificationScheduler.scheduleDailyReminder(this)
             }
-        } else {
+        } else if (remindersEnabled()) {
             NotificationScheduler.scheduleDailyReminder(this)
         }
 

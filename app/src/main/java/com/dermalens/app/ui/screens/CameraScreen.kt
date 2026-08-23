@@ -64,6 +64,10 @@ fun CameraPreviewScreen(navController: NavController) {
     var isFrontCamera by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) { onDispose { cameraExecutor.shutdown() } }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) selectedImageUri = uri }
@@ -79,15 +83,36 @@ fun CameraPreviewScreen(navController: NavController) {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+            val capture = ImageCapture.Builder().build()
             val cameraSelector = if (frontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             try {
                 cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, capture)
+                imageCapture = capture
             } catch (e: Exception) { Log.e("DermaLens", "Camera binding failed", e) }
         }, ContextCompat.getMainExecutor(context))
     }
 
     LaunchedEffect(isFrontCamera) { startCamera(isFrontCamera) }
+
+    fun capturePhoto(capture: ImageCapture, onCaptured: (android.net.Uri) -> Unit, onFailed: () -> Unit) {
+        val photoFile = java.io.File(context.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+        capture.takePicture(
+            outputOptions,
+            cameraExecutor,
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val uri = android.net.Uri.fromFile(photoFile)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { onCaptured(uri) }
+                }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e("DermaLens", "Photo capture failed", exception)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { onFailed() }
+                }
+            }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
@@ -193,11 +218,27 @@ fun CameraPreviewScreen(navController: NavController) {
                 ) {
                     IconButton(
                         onClick = {
-                            isScanning = true
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                isScanning = false
-                                navController.navigate(Screen.ScanResult.createRoute(selectedImageUri?.toString()))
-                            }, 2000)
+                            val galleryUri = selectedImageUri
+                            if (galleryUri != null) {
+                                isScanning = true
+                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                    isScanning = false
+                                    navController.navigate(Screen.ScanResult.createRoute(galleryUri.toString()))
+                                }, 2000)
+                            } else {
+                                val capture = imageCapture
+                                if (capture != null) {
+                                    isScanning = true
+                                    capturePhoto(
+                                        capture,
+                                        onCaptured = { uri ->
+                                            isScanning = false
+                                            navController.navigate(Screen.ScanResult.createRoute(uri.toString()))
+                                        },
+                                        onFailed = { isScanning = false }
+                                    )
+                                }
+                            }
                         },
                         enabled = !isScanning
                     ) {

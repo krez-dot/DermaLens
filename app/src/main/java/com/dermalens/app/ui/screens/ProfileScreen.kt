@@ -37,7 +37,6 @@ fun ProfileScreen(navController: NavController) {
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
-    var notificationsEnabled by remember { mutableStateOf(true) }
 
     val db = remember { DermaDatabase.getDatabase(context) }
     var userName by remember { mutableStateOf("User") }
@@ -51,6 +50,7 @@ fun ProfileScreen(navController: NavController) {
     var fontScale by remember { mutableStateOf(prefs.getFloat(DermaPrefs.KEY_FONT_SIZE, 1.0f)) }
     var highContrast by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_HIGH_CONTRAST, false)) }
     var contributeData by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false)) }
+    var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean(DermaPrefs.KEY_NOTIFICATIONS_ENABLED, true)) }
 
     LaunchedEffect(Unit) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
@@ -93,7 +93,7 @@ fun ProfileScreen(navController: NavController) {
                             .border(if (settings.highContrast) 3.dp else 2.5.dp, Color.White, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(userName.split(" ").take(2).map { it.first() }.joinToString(""), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(userName.split(" ").filter { it.isNotEmpty() }.take(2).map { it.first() }.joinToString("").ifEmpty { "?" }, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(userName, fontSize = settings.textXl.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -134,7 +134,15 @@ fun ProfileScreen(navController: NavController) {
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.Edit, iconBg = DermaGreenLight, iconTint = DermaGreen, title = "Edit Profile", subtitle = "Update your name and email", onClick = { navController.navigate(Screen.EditProfile.route) })
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                ProfileMenuItemSwitch(icon = Icons.Default.Notifications, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "Scan Reminders", subtitle = if (notificationsEnabled) "Reminders are ON" else "Reminders are OFF", checked = notificationsEnabled, onCheckedChange = { notificationsEnabled = it })
+                ProfileMenuItemSwitch(icon = Icons.Default.Notifications, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "Scan Reminders", subtitle = if (notificationsEnabled) "Reminders are ON" else "Reminders are OFF", checked = notificationsEnabled, onCheckedChange = {
+                    notificationsEnabled = it
+                    prefs.edit().putBoolean(DermaPrefs.KEY_NOTIFICATIONS_ENABLED, it).apply()
+                    if (it) {
+                        com.dermalens.app.worker.NotificationScheduler.scheduleDailyReminder(context)
+                    } else {
+                        com.dermalens.app.worker.NotificationScheduler.cancelReminder(context)
+                    }
+                })
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItemSwitch(icon = Icons.Default.Science, iconBg = Color(0xFFF5F3FF), iconTint = Color(0xFF7C3AED), title = "Contribute to Research", subtitle = if (contributeData) "Your scans help improve DermaLens" else "Help us improve for Filipino skin tones", checked = contributeData, onCheckedChange = { contributeData = it; prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, it).apply() })
             }
@@ -377,16 +385,30 @@ fun EditProfileScreen(navController: NavController) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
         if (user != null) {
+            val trimmedName = name.trim()
+            val trimmedEmail = email.trim()
+            if (trimmedName.isEmpty()) { errorMessage = "Full name cannot be empty."; return@LaunchedEffect }
+            if (trimmedEmail.isEmpty()) { errorMessage = "Email cannot be empty."; return@LaunchedEffect }
+            if (!trimmedEmail.equals(user.email, ignoreCase = true) && db.userDao().emailExists(trimmedEmail) > 0) {
+                errorMessage = "That email is already in use by another account."
+                return@LaunchedEffect
+            }
             if (newPassword.isNotEmpty()) {
-                if (hashPassword(currentPassword) != user.passwordHash) { errorMessage = "Current password is incorrect."; return@LaunchedEffect }
+                if (!verifyPassword(currentPassword, user.passwordHash)) { errorMessage = "Current password is incorrect."; return@LaunchedEffect }
                 if (newPassword != confirmPassword) { errorMessage = "New passwords do not match."; return@LaunchedEffect }
                 if (newPassword.length < 6) { errorMessage = "Password must be at least 6 characters."; return@LaunchedEffect }
-                db.userDao().updateUser(user.copy(fullName = name.trim(), email = email.trim(), passwordHash = hashPassword(newPassword)))
-            } else {
-                db.userDao().updateProfile(user.userId, name.trim(), email.trim())
             }
-            prefs.edit().putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
-            isSaved = true
+            try {
+                if (newPassword.isNotEmpty()) {
+                    db.userDao().updateUser(user.copy(fullName = trimmedName, email = trimmedEmail, passwordHash = hashPassword(newPassword)))
+                } else {
+                    db.userDao().updateProfile(user.userId, trimmedName, trimmedEmail)
+                }
+                prefs.edit().putString(DermaPrefs.KEY_USER_EMAIL, trimmedEmail).apply()
+                isSaved = true
+            } catch (e: android.database.sqlite.SQLiteConstraintException) {
+                errorMessage = "That email is already in use by another account."
+            }
         }
     }
 
