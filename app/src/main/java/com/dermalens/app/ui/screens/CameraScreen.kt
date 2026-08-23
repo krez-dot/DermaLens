@@ -2,6 +2,10 @@ package com.dermalens.app.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.RectF
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -12,6 +16,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,10 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -35,6 +45,71 @@ import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
 import java.util.concurrent.Executors
 import androidx.compose.foundation.BorderStroke
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Crops [sourceUri] to exactly what's visible inside the guide box, given how the user has
+ * panned/zoomed it. Mirrors the same transform the UI applies (ContentScale.Fit base fit,
+ * centered, then the user's additional scale/offset) as an android.graphics.Matrix, inverts it,
+ * and maps the guide box's screen corners back into the original bitmap's pixel space.
+ */
+private fun cropGalleryImageToFrame(
+    context: android.content.Context,
+    sourceUri: android.net.Uri,
+    containerWidthPx: Float,
+    containerHeightPx: Float,
+    guideBoxSizePx: Float,
+    userScale: Float,
+    userOffsetX: Float,
+    userOffsetY: Float
+): android.net.Uri? {
+    return try {
+        val bitmap = context.contentResolver.openInputStream(sourceUri)?.use { BitmapFactory.decodeStream(it) } ?: return null
+        val bitmapW = bitmap.width.toFloat()
+        val bitmapH = bitmap.height.toFloat()
+
+        val baseScale = minOf(containerWidthPx / bitmapW, containerHeightPx / bitmapH)
+        val cx = containerWidthPx / 2f
+        val cy = containerHeightPx / 2f
+
+        val matrix = Matrix()
+        matrix.postScale(baseScale, baseScale)
+        matrix.postTranslate(cx - bitmapW * baseScale / 2f, cy - bitmapH * baseScale / 2f)
+        matrix.postScale(userScale, userScale, cx, cy)
+        matrix.postTranslate(userOffsetX, userOffsetY)
+
+        val inverse = Matrix()
+        if (!matrix.invert(inverse)) return null
+
+        val half = guideBoxSizePx / 2f
+        val corners = floatArrayOf(
+            cx - half, cy - half,
+            cx + half, cy - half,
+            cx + half, cy + half,
+            cx - half, cy + half
+        )
+        inverse.mapPoints(corners)
+
+        val xs = floatArrayOf(corners[0], corners[2], corners[4], corners[6])
+        val ys = floatArrayOf(corners[1], corners[3], corners[5], corners[7])
+        val left = (xs.min().coerceIn(0f, bitmapW)).toInt()
+        val top = (ys.min().coerceIn(0f, bitmapH)).toInt()
+        val right = (xs.max().coerceIn(0f, bitmapW)).toInt()
+        val bottom = (ys.max().coerceIn(0f, bitmapH)).toInt()
+        val cropW = (right - left).coerceAtLeast(1)
+        val cropH = (bottom - top).coerceAtLeast(1)
+
+        val cropped = Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
+        val file = java.io.File(context.cacheDir, "scan_crop_${System.currentTimeMillis()}.jpg")
+        java.io.FileOutputStream(file).use { out -> cropped.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+        android.net.Uri.fromFile(file)
+    } catch (e: Exception) {
+        Log.e("DermaLens", "Gallery image crop failed", e)
+        null
+    }
+}
 
 @Composable
 fun ScanScreen(navController: NavController) {
@@ -68,9 +143,25 @@ fun CameraPreviewScreen(navController: NavController) {
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     DisposableEffect(Unit) { onDispose { cameraExecutor.shutdown() } }
 
+    // Pan/zoom for a gallery-picked image, so the user can position it within the guide frame
+    // before scanning. Resets whenever a new image is picked.
+    var galleryScale by remember { mutableFloatStateOf(1f) }
+    var galleryOffsetX by remember { mutableFloatStateOf(0f) }
+    var galleryOffsetY by remember { mutableFloatStateOf(0f) }
+    var containerSizePx by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val guideBoxSizePx = with(density) { 260.dp.toPx() }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri -> if (uri != null) selectedImageUri = uri }
+    ) { uri ->
+        if (uri != null) {
+            selectedImageUri = uri
+            galleryScale = 1f
+            galleryOffsetX = 0f
+            galleryOffsetY = 0f
+        }
+    }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -98,6 +189,8 @@ fun CameraPreviewScreen(navController: NavController) {
 
     LaunchedEffect(isFrontCamera) { startCamera(isFrontCamera) }
 
+    val scope = rememberCoroutineScope()
+
     fun capturePhoto(capture: ImageCapture, onCaptured: (android.net.Uri) -> Unit, onFailed: () -> Unit) {
         val photoFile = java.io.File(context.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
         val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
@@ -117,17 +210,47 @@ fun CameraPreviewScreen(navController: NavController) {
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+            .onSizeChanged { containerSizePx = it }
+    ) {
 
         if (selectedImageUri != null) {
             AsyncImage(
                 model = selectedImageUri,
-                contentDescription = "Selected image",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                contentDescription = "Selected image (pinch to zoom, drag to pan)",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = galleryScale,
+                        scaleY = galleryScale,
+                        translationX = galleryOffsetX,
+                        translationY = galleryOffsetY
+                    )
+                    .pointerInput(selectedImageUri) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            galleryScale = (galleryScale * zoom).coerceIn(1f, 5f)
+                            galleryOffsetX += pan.x
+                            galleryOffsetY += pan.y
+                        }
+                    },
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
             )
         } else {
-            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(camera) {
+                        detectTransformGestures { _, _, zoom, _ ->
+                            val cam = camera ?: return@detectTransformGestures
+                            val zoomState = cam.cameraInfo.zoomState.value ?: return@detectTransformGestures
+                            val newRatio = (zoomState.zoomRatio * zoom)
+                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                            cam.cameraControl.setZoomRatio(newRatio)
+                        }
+                    }
+            )
         }
 
         // Dark overlay at top and bottom
@@ -224,10 +347,17 @@ fun CameraPreviewScreen(navController: NavController) {
                             val galleryUri = selectedImageUri
                             if (galleryUri != null) {
                                 isScanning = true
-                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                scope.launch {
+                                    val croppedUri = withContext(Dispatchers.IO) {
+                                        cropGalleryImageToFrame(
+                                            context, galleryUri,
+                                            containerSizePx.width.toFloat(), containerSizePx.height.toFloat(),
+                                            guideBoxSizePx, galleryScale, galleryOffsetX, galleryOffsetY
+                                        )
+                                    }
                                     isScanning = false
-                                    navController.navigate(Screen.ScanResult.createRoute(galleryUri.toString()))
-                                }, 2000)
+                                    navController.navigate(Screen.ScanResult.createRoute((croppedUri ?: galleryUri).toString()))
+                                }
                             } else {
                                 val capture = imageCapture
                                 if (capture != null) {

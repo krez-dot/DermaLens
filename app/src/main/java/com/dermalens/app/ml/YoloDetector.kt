@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Log
 import com.dermalens.app.ui.screens.DetectionResult
 import com.dermalens.app.ui.screens.mockDetectionResults
 import org.tensorflow.lite.Interpreter
@@ -12,18 +13,12 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
-// TODO: rename to match the .tflite file you drop into app/src/main/assets/
-private const val MODEL_FILE_NAME = "model.tflite"
+private const val MODEL_FILE_NAME = "best.tflite"
 
-// TODO: set to your model's actual input width/height (check with Netron or the export config)
-private const val INPUT_SIZE = 224
-
-// TODO: replace with your YOLOv11 training class order (index -> label), exactly as trained.
-// Placeholder assumes the 6 Care Guide conditions; your model may end up covering more
-// (HANDOFF.md notes a 9-class target once the multi-class merge lands).
-private val CLASS_LABELS = listOf(
-    "Acne Vulgaris", "Atopic Dermatitis", "Melasma", "Tinea", "Warts", "Scabies"
-)
+// TEMPORARY: single-class test model (Melasma only), trained as an isolated sanity-check
+// per HANDOFF.md's note on validating annotations before the full multi-class merge.
+// Replace with the real class list (in training order) once the merged model is ready.
+private val CLASS_LABELS = listOf("Melasma")
 
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
@@ -40,8 +35,20 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
         val bitmap = loadBitmap(context, imageUri) ?: return null
 
         Interpreter(modelBuffer).use { interpreter ->
-            val inputBuffer = preprocess(bitmap, INPUT_SIZE)
+            // Input size and layout are read from the model itself rather than assumed, since
+            // exports vary between channels-last [1, H, W, 3] (the usual TFLite/mobile
+            // convention) and channels-first [1, 3, H, W] (seen from some export paths, e.g.
+            // this model's "serving_default_args_0" input -- a generic SavedModel signature
+            // name that doesn't match Ultralytics' typical direct-export naming).
+            val inputShape = interpreter.getInputTensor(0).shape()
+            val inputDims = inputShape.drop(1) // drop batch dim
+            val inputChannelsFirst = inputDims.getOrNull(0) == 3
+            val inputHeight = if (inputChannelsFirst) inputDims.getOrElse(1) { 640 } else inputDims.getOrElse(0) { 640 }
+            val inputWidth = if (inputChannelsFirst) inputDims.getOrElse(2) { 640 } else inputDims.getOrElse(1) { 640 }
             val outputShape = interpreter.getOutputTensor(0).shape()
+            Log.d("DermaLens", "YOLO input=${inputShape.toList()} (channelsFirst=$inputChannelsFirst) output=${outputShape.toList()}")
+
+            val inputBuffer = preprocess(bitmap, inputWidth, inputHeight, inputChannelsFirst)
             val outputSize = outputShape.fold(1) { acc, d -> acc * d }
             val outputBuffer = ByteBuffer.allocateDirect(outputSize * 4).order(ByteOrder.nativeOrder())
 
@@ -52,22 +59,26 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             outputBuffer.asFloatBuffer().get(values)
 
             val (classIndex, confidence) = bestClass(values, outputShape)
+            Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence")
             val label = CLASS_LABELS.getOrNull(classIndex) ?: return null
             val template = conditionTemplates[label] ?: return null
             template.copy(confidence = (confidence * 100f).coerceIn(0f, 100f))
         }
     } catch (e: Exception) {
+        Log.e("DermaLens", "YOLO inference failed", e)
         null
     }
 }
 
 private fun loadModelFile(context: Context): ByteBuffer? {
+    Log.d("DermaLens", "YOLO looking for asset: $MODEL_FILE_NAME, assets list=${context.assets.list("")?.toList()}")
     return try {
         val afd = context.assets.openFd(MODEL_FILE_NAME)
         FileInputStream(afd.fileDescriptor).use { input ->
             input.channel.map(FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength)
         }
     } catch (e: java.io.FileNotFoundException) {
+        Log.e("DermaLens", "YOLO model asset not found: $MODEL_FILE_NAME", e)
         null // no model bundled yet -- caller falls back to mock results
     }
 }
@@ -80,15 +91,30 @@ private fun loadBitmap(context: Context, imageUri: String): Bitmap? {
     }
 }
 
-private fun preprocess(bitmap: Bitmap, size: Int): ByteBuffer {
-    val resized = Bitmap.createScaledBitmap(bitmap, size, size, true)
-    val buffer = ByteBuffer.allocateDirect(4 * size * size * 3).order(ByteOrder.nativeOrder())
-    val pixels = IntArray(size * size)
-    resized.getPixels(pixels, 0, size, 0, 0, size, size)
-    for (pixel in pixels) {
-        buffer.putFloat(((pixel shr 16) and 0xFF) / 255f)
-        buffer.putFloat(((pixel shr 8) and 0xFF) / 255f)
-        buffer.putFloat((pixel and 0xFF) / 255f)
+private fun preprocess(bitmap: Bitmap, width: Int, height: Int, channelsFirst: Boolean): ByteBuffer {
+    // Stretch-to-square, not letterboxed: tested both against this model and confidence was
+    // roughly 5x higher with a stretch resize (~40% vs ~9%), which points to the training data
+    // having been resized this same way -- likely Roboflow's "Resize: Stretch" preprocessing
+    // preset (HANDOFF.md notes a Kaggle/Roboflow dataset). Revisit if the final merged model
+    // turns out to use different preprocessing.
+    val resized = Bitmap.createScaledBitmap(bitmap, width, height, true)
+    val buffer = ByteBuffer.allocateDirect(4 * width * height * 3).order(ByteOrder.nativeOrder())
+    val pixels = IntArray(width * height)
+    resized.getPixels(pixels, 0, width, 0, 0, width, height)
+    if (channelsFirst) {
+        // NCHW: all R values, then all G values, then all B values (planar).
+        for (channelShift in intArrayOf(16, 8, 0)) {
+            for (pixel in pixels) {
+                buffer.putFloat(((pixel shr channelShift) and 0xFF) / 255f)
+            }
+        }
+    } else {
+        // NHWC: R, G, B interleaved per pixel.
+        for (pixel in pixels) {
+            buffer.putFloat(((pixel shr 16) and 0xFF) / 255f)
+            buffer.putFloat(((pixel shr 8) and 0xFF) / 255f)
+            buffer.putFloat((pixel and 0xFF) / 255f)
+        }
     }
     buffer.rewind()
     return buffer
@@ -97,8 +123,6 @@ private fun preprocess(bitmap: Bitmap, size: Int): ByteBuffer {
 /**
  * Picks the highest-confidence class from the model's raw output.
  *
- * TODO verify against your actual export shape (log interpreter.getOutputTensor(0).shape(),
- * or inspect the .tflite in Netron):
  *  - Plain classifier [1, numClasses]: argmax directly (handled below).
  *  - YOLO detection head [1, 4+numClasses, numBoxes] or [1, numBoxes, 4+numClasses]:
  *    treated here as "does this class appear anywhere in the image" by taking the max

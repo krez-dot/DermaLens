@@ -14,3 +14,7 @@
 .cxx
 local.properties
 .vscode/
+
+# ML models are large binaries and change frequently during training -- share via
+# Drive/Colab, not git. Drop the current one at app/src/main/assets/best.tflite locally.
+*.tflite
