@@ -74,25 +74,24 @@ Dialogs: Logout, Privacy Policy (Profile), Privacy Policy (Register), About, Del
 ## What's Pending
 
 ### YOLOv11 TFLite Integration
-**File to edit:** `ScanResultScreen.kt` line 76
+The scaffold is in place and wired up — this is now just a "drop the model in" step, not a code-writing step.
 
-**Current (placeholder):**
-```kotlin
-val result = remember { mockDetectionResults.random() }
-```
+**What's already done:**
+- `ScanResultScreen.kt` uses `produceState` to run inference off the main thread and shows an "Analyzing your scan..." spinner while it resolves, instead of blocking on `mockDetectionResults.random()` directly
+- `ml/YoloDetector.kt` has `runYoloInference(context, imageUri): DetectionResult?` — returns `null` (safe fallback to mock) if no model file is bundled yet, the image can't be read, or inference throws
+- TFLite Gradle dependencies were already present in `build.gradle.kts`; added `androidResources { noCompress += "tflite" }` so the model file isn't corrupted by AAPT compression on mmap-load
+- Output parsing in `YoloDetector.kt` auto-adapts to either a plain classifier `[1, numClasses]` shape or a YOLO detection-head shape (`[1, 4+numClasses, numBoxes]` or transposed) by taking the max per-class score across boxes — reasonable since this screen shows a whole-image diagnosis, not bounding boxes
 
-**Replace with:**
-```kotlin
-val result = remember(imageUri) {
-    if (imageUri != null) {
-        runYoloInference(context, imageUri)  // your TFLite inference call
-    } else {
-        mockDetectionResults.random()
-    }
-}
-```
+**Steps to finish integration once your model is trained:**
+1. Export YOLOv11 to `.tflite`
+2. Drop it into `app/src/main/assets/model.tflite`
+3. In `ml/YoloDetector.kt`, update the three `TODO`s at the top:
+   - `MODEL_FILE_NAME` if you used a different filename
+   - `INPUT_SIZE` to match your export's actual input resolution
+   - `CLASS_LABELS` to match your training class order exactly (note the 9-class target mentioned in the Sprint 2 AI/ML note above — the placeholder only lists the original 6 Care Guide conditions)
+4. Run a real scan and check `interpreter.getOutputTensor(0).shape()` (log it if unsure) against the assumptions in `bestClass()` — adjust if your export shape doesn't match either pattern
 
-The `DetectionResult` data class (line 36) is already defined — your inference function just needs to return one of these:
+The `DetectionResult` data class (`ScanResultScreen.kt`) is unchanged:
 ```kotlin
 data class DetectionResult(
     val condition: String,
@@ -104,13 +103,6 @@ data class DetectionResult(
     val color: Color
 )
 ```
-
-**Steps for integration:**
-1. Export YOLOv11 model to `.tflite` format
-2. Place the `.tflite` file in `app/src/main/assets/`
-3. Add TFLite dependency to `build.gradle`
-4. Write inference wrapper that returns `DetectionResult`
-5. Replace the `remember { mockDetectionResults.random() }` line
 
 ---
 

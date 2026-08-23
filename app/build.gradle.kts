@@ -42,7 +42,10 @@ android {
         compose = true
     }
 
-    // Allow TFLite model file to not be compressed
+    androidResources {
+        // TFLite loads its model via mmap; AAPT compressing the file breaks that.
+        noCompress += "tflite"
+    }
 }
 
 dependencies {

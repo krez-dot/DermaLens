@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.ui.screens.DermaPrefs
+import com.dermalens.app.ml.runYoloInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,12 +74,36 @@ fun getSeverityBg(severity: String): Color {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
-    val result = remember { mockDetectionResults.random() }
-    var isSaved by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    val loadedResult by produceState<DetectionResult?>(initialValue = null, imageUri) {
+        value = withContext(Dispatchers.Default) {
+            imageUri?.let { runYoloInference(context, it) } ?: mockDetectionResults.random()
+        }
+    }
+
+    if (loadedResult == null) {
+        Scaffold { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(if (settings.highContrast) Color.White else Color(0xFFF8F9FA)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = DermaGreen)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Analyzing your scan...", fontSize = settings.textMd.sp, color = Color(0xFF6B7280))
+                }
+            }
+        }
+        return
+    }
+    val result = loadedResult!!
+    var isSaved by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
