@@ -50,6 +50,7 @@ fun ProfileScreen(navController: NavController) {
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showContributeDialog by remember { mutableStateOf(false) }
 
     val db = remember { DermaDatabase.getDatabase(context) }
     var userName by remember { mutableStateOf("User") }
@@ -157,7 +158,14 @@ fun ProfileScreen(navController: NavController) {
                     }
                 })
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                ProfileMenuItemSwitch(icon = Icons.Default.Science, iconBg = Color(0xFFF5F3FF), iconTint = Color(0xFF7C3AED), title = "Contribute to Research", subtitle = if (contributeData) "Your scans help improve DermaLens" else "Help us improve for Filipino skin tones", checked = contributeData, onCheckedChange = { contributeData = it; prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, it).apply() })
+                ProfileMenuItemSwitch(icon = Icons.Default.Science, iconBg = Color(0xFFF5F3FF), iconTint = Color(0xFF7C3AED), title = "Contribute to Research", subtitle = if (contributeData) "Your scans help improve DermaLens" else "Help us improve for Filipino skin tones", checked = contributeData, onCheckedChange = {
+                    if (it) {
+                        showContributeDialog = true
+                    } else {
+                        contributeData = false
+                        prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false).apply()
+                    }
+                })
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -290,6 +298,41 @@ fun ProfileScreen(navController: NavController) {
             },
             dismissButton = {
                 OutlinedButton(onClick = { showLogoutDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Cancel", fontSize = settings.textMd.sp) }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
+        )
+    }
+
+    // Contribute to Research Dialog
+    if (showContributeDialog) {
+        AlertDialog(
+            onDismissRequest = { showContributeDialog = false },
+            icon = { Icon(Icons.Default.Science, contentDescription = null, tint = Color(0xFF7C3AED)) },
+            title = { Text("Contribute to Research", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp, color = Color(0xFF111827)) },
+            text = {
+                Text(
+                    "When enabled, your skin scan images and results will be added to the DermaLens research dataset. This data helps train and improve future versions of the AI model, especially for detecting conditions across a wider range of Filipino skin tones.\n\nYour scans are contributed anonymously and are never linked to your name or account. You can turn this off at any time.",
+                    fontSize = settings.textMd.sp,
+                    color = Color(0xFF374151),
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        contributeData = true
+                        prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, true).apply()
+                        showContributeDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text("Allow", fontSize = settings.textMd.sp) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showContributeDialog = false }, shape = RoundedCornerShape(10.dp)) { Text("Not Now", fontSize = settings.textMd.sp) }
             },
             shape = RoundedCornerShape(16.dp),
             containerColor = Color.White,
