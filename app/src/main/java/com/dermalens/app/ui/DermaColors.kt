@@ -45,4 +45,5 @@ object DermaPrefs {
     const val KEY_HIGH_CONTRAST = "high_contrast"
     const val KEY_CONTRIBUTE_DATA = "contribute_data"
     const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
+    const val KEY_IS_GUEST = "is_guest"
 }

@@ -18,3 +18,7 @@ local.properties
 # ML models are large binaries and change frequently during training -- share via
 # Drive/Colab, not git. Drop the current one at app/src/main/assets/best.tflite locally.
 *.tflite
+
+# Firebase config carries a project API key -- share it directly with the team
+# instead of committing it (see SETUP.md for how to get one).
+app/google-services.json
