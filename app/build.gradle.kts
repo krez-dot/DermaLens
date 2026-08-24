@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -106,6 +107,14 @@ dependencies {
 
     // ── Coil (image loading) ──────────────────────────────────────────────
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // ── Firebase (email/password auth for registered accounts only --
+    // guest mode bypasses this entirely and stays on local Room DB) ────────
+    // Note: intentionally not the newest BoM available -- 34.x's firebase-auth requires
+    // Kotlin 2.3.0 metadata, but this project is pinned to Kotlin 2.0.21. 33.5.1 is the
+    // newest version that's actually compatible with this project's Kotlin version.
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth")
 
     // ── Testing ───────────────────────────────────────────────────────────
     testImplementation(libs.junit)

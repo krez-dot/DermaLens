@@ -1,5 +1,6 @@
 package com.dermalens.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -33,7 +34,16 @@ import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.User
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import kotlinx.coroutines.launch
+
+/** The single local-only guest profile for this device -- one guest slot, reused across
+ * logout/re-guest cycles rather than a fresh throwaway account every time. */
+private const val GUEST_EMAIL = "guest@dermalens.local"
 
 /**
  * Real format validation (was previously just `email.contains("@")`, which let through
@@ -42,6 +52,17 @@ import kotlinx.coroutines.launch
  */
 fun isValidEmail(email: String): Boolean =
     email.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+
+/** Translates Firebase Auth's exception types into short, user-facing messages, rather than
+ * surfacing Firebase's raw internal wording. Used by both the auth screens and Edit Profile's
+ * password-change flow. */
+fun firebaseAuthErrorMessage(e: Exception): String = when (e) {
+    is FirebaseAuthWeakPasswordException -> "Password is too weak. Use at least 6 characters."
+    is FirebaseAuthInvalidCredentialsException -> "Incorrect email or password. Please try again."
+    is FirebaseAuthUserCollisionException -> "An account with this email already exists."
+    is FirebaseAuthInvalidUserException -> "No account found with this email, or it has been disabled."
+    else -> e.localizedMessage ?: "Something went wrong. Please try again."
+}
 
 @Composable
 private fun dermaFieldColors(highContrast: Boolean) = OutlinedTextFieldDefaults.colors(
@@ -68,11 +89,13 @@ fun LoginScreen(navController: NavController) {
     var emailError by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf("") }
     var loginError by remember { mutableStateOf("") }
+    var infoMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(email.isNotEmpty()) }
 
     val bgColor = settings.background
     val cardBg = if (settings.highContrast) Color(0xFFF0F0F0) else Color(0xFFFEE2E2)
+    val infoCardBg = if (settings.highContrast) Color(0xFFF0F0F0) else Color(0xFFDCFCE7)
 
     fun validate(): Boolean {
         var valid = true
@@ -115,8 +138,20 @@ fun LoginScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            if (infoMessage.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(infoCardBg).padding(12.dp).semantics { contentDescription = infoMessage },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(infoMessage, fontSize = settings.textBase.sp, color = Color(0xFF166534))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             OutlinedTextField(
-                value = email, onValueChange = { email = it; emailError = ""; loginError = "" },
+                value = email, onValueChange = { email = it; emailError = ""; loginError = ""; infoMessage = "" },
                 label = { Text("Email address") },
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 isError = emailError.isNotEmpty(),
@@ -147,12 +182,27 @@ fun LoginScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = rememberMe, onCheckedChange = { rememberMe = it },
-                    colors = CheckboxDefaults.colors(checkedColor = DermaGreen, uncheckedColor = if (settings.highContrast) Color.Black else Color(0xFF9CA3AF))
-                )
-                Text("Remember me", fontSize = settings.textMd.sp, color = settings.textPrimary)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = rememberMe, onCheckedChange = { rememberMe = it },
+                        colors = CheckboxDefaults.colors(checkedColor = DermaGreen, uncheckedColor = if (settings.highContrast) Color.Black else Color(0xFF9CA3AF))
+                    )
+                    Text("Remember me", fontSize = settings.textMd.sp, color = settings.textPrimary)
+                }
+                TextButton(onClick = {
+                    infoMessage = ""
+                    if (!isValidEmail(email)) {
+                        loginError = "Enter your email above first, then tap \"Forgot password?\""
+                    } else {
+                        loginError = ""
+                        FirebaseAuth.getInstance().sendPasswordResetEmail(email.trim())
+                            .addOnSuccessListener { infoMessage = "Password reset email sent to ${email.trim()}." }
+                            .addOnFailureListener { e -> loginError = firebaseAuthErrorMessage(e) }
+                    }
+                }) {
+                    Text("Forgot password?", fontSize = settings.textSm.sp, color = DermaGreen, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -161,22 +211,40 @@ fun LoginScreen(navController: NavController) {
                 onClick = {
                     if (validate()) {
                         isLoading = true
-                        scope.launch {
-                            val candidate = db.userDao().getUserByEmail(email.trim())
-                            val user = candidate?.takeIf { verifyPassword(password, it.passwordHash) }
-                            isLoading = false
-                            if (user != null) {
-                                prefs.edit().apply {
-                                    if (rememberMe) putString(DermaPrefs.KEY_REMEMBER_EMAIL, email.trim()) else remove(DermaPrefs.KEY_REMEMBER_EMAIL)
-                                    putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
-                                    putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
-                                    apply()
+                        FirebaseAuth.getInstance().signInWithEmailAndPassword(email.trim(), password)
+                            .addOnSuccessListener { result ->
+                                val firebaseUser = result.user
+                                scope.launch {
+                                    var user = firebaseUser?.uid?.let { db.userDao().getUserByFirebaseUid(it) }
+                                    if (user == null && firebaseUser != null) {
+                                        // No local profile yet (fresh install / different device)
+                                        // -- create a minimal one so the rest of the app has a
+                                        // profile row to read.
+                                        db.userDao().insertUser(
+                                            User(
+                                                fullName = firebaseUser.email?.substringBefore("@") ?: "User",
+                                                email = email.trim(),
+                                                passwordHash = "",
+                                                firebaseUid = firebaseUser.uid,
+                                                isGuest = false
+                                            )
+                                        )
+                                    }
+                                    isLoading = false
+                                    prefs.edit().apply {
+                                        if (rememberMe) putString(DermaPrefs.KEY_REMEMBER_EMAIL, email.trim()) else remove(DermaPrefs.KEY_REMEMBER_EMAIL)
+                                        putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
+                                        putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
+                                        putBoolean(DermaPrefs.KEY_IS_GUEST, false)
+                                        apply()
+                                    }
+                                    navController.navigate(Screen.Home.route) { popUpTo(Screen.Login.route) { inclusive = true } }
                                 }
-                                navController.navigate(Screen.Home.route) { popUpTo(Screen.Login.route) { inclusive = true } }
-                            } else {
-                                loginError = "Incorrect email or password. Please try again."
                             }
-                        }
+                            .addOnFailureListener { e ->
+                                isLoading = false
+                                loginError = firebaseAuthErrorMessage(e)
+                            }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Sign in button" },
@@ -186,6 +254,33 @@ fun LoginScreen(navController: NavController) {
             ) {
                 if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                 else Text("Sign In", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val guest = db.userDao().getUserByEmail(GUEST_EMAIL)
+                        if (guest == null) {
+                            db.userDao().insertUser(User(fullName = "Guest", email = GUEST_EMAIL, passwordHash = "", firebaseUid = null, isGuest = true))
+                        }
+                        prefs.edit().apply {
+                            putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
+                            putString(DermaPrefs.KEY_USER_EMAIL, GUEST_EMAIL)
+                            putBoolean(DermaPrefs.KEY_IS_GUEST, true)
+                            apply()
+                        }
+                        navController.navigate(Screen.Home.route) { popUpTo(Screen.Login.route) { inclusive = true } }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Continue as guest button" },
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, if (settings.highContrast) Color.Black else Color(0xFFE5E7EB))
+            ) {
+                Icon(Icons.Default.PersonOutline, contentDescription = null, tint = settings.textPrimary, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Continue as Guest", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -291,22 +386,40 @@ fun RegisterScreen(navController: NavController) {
                 onClick = {
                     if (validate()) {
                         isLoading = true
-                        scope.launch {
-                            try {
-                                val emailTaken = db.userDao().emailExists(email.trim()) > 0
-                                if (emailTaken) { registerError = "An account with this email already exists."; isLoading = false }
-                                else {
-                                    db.userDao().insertUser(User(fullName = name.trim(), email = email.trim(), passwordHash = hashPassword(password)))
-                                    val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                                    prefs.edit().putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true).putString(DermaPrefs.KEY_USER_EMAIL, email.trim()).apply()
-                                    isLoading = false
-                                    navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
+                        FirebaseAuth.getInstance().createUserWithEmailAndPassword(email.trim(), password)
+                            .addOnSuccessListener { result ->
+                                val firebaseUser = result.user
+                                firebaseUser?.sendEmailVerification()
+                                scope.launch {
+                                    try {
+                                        db.userDao().insertUser(
+                                            User(
+                                                fullName = name.trim(),
+                                                email = email.trim(),
+                                                passwordHash = "",
+                                                firebaseUid = firebaseUser?.uid,
+                                                isGuest = false
+                                            )
+                                        )
+                                        val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                                        prefs.edit().apply {
+                                            putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
+                                            putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
+                                            putBoolean(DermaPrefs.KEY_IS_GUEST, false)
+                                            apply()
+                                        }
+                                        isLoading = false
+                                        navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
+                                    } catch (e: android.database.sqlite.SQLiteConstraintException) {
+                                        registerError = "An account with this email already exists."
+                                        isLoading = false
+                                    }
                                 }
-                            } catch (e: android.database.sqlite.SQLiteConstraintException) {
-                                registerError = "An account with this email already exists."
-                                isLoading = false
                             }
-                        }
+                            .addOnFailureListener { e ->
+                                isLoading = false
+                                registerError = firebaseAuthErrorMessage(e)
+                            }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Create account button" },
@@ -357,7 +470,7 @@ fun RegisterScreen(navController: NavController) {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     PrivacySection("Data We Collect", "We collect your name, email address, and skin scan images you choose to submit. Scan results including condition, severity, and confidence scores are stored locally on your device.")
                     PrivacySection("How We Use Your Data", "Your data is used solely to provide personalized skin health tracking within the app. If you enable 'Contribute to Research', anonymized scan data may be used to improve our detection model.")
-                    PrivacySection("Data Storage", "All personal data is stored locally on your device. Your password is never stored in plain text -- it is salted and hashed before being saved. We do not sell, rent, or share your personal information with third parties.")
+                    PrivacySection("Data Storage", "Scan history, results, and app preferences are stored locally on your device. If you register an account, your email and password are managed by Firebase Authentication (Google's infrastructure) for account verification and sign-in -- your password is never visible to us in plain text. Continuing as a guest keeps everything entirely local, with no account or email involved at all. We do not sell, rent, or share your personal information with third parties.")
                     PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed images are currently kept only on your device and are not uploaded anywhere.")
                     PrivacySection("Your Rights", "You may delete your account and all associated data at any time. Scan records can be individually deleted from the Progress Tracker.")
                     PrivacySection("Medical Disclaimer", "DermaLens is for informational reference only and does not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")
