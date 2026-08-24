@@ -388,7 +388,7 @@ fun EditProfileScreen(navController: NavController) {
             val trimmedName = name.trim()
             val trimmedEmail = email.trim()
             if (trimmedName.isEmpty()) { errorMessage = "Full name cannot be empty."; return@LaunchedEffect }
-            if (trimmedEmail.isEmpty()) { errorMessage = "Email cannot be empty."; return@LaunchedEffect }
+            if (!isValidEmail(trimmedEmail)) { errorMessage = "Please enter a valid email address."; return@LaunchedEffect }
             if (!trimmedEmail.equals(user.email, ignoreCase = true) && db.userDao().emailExists(trimmedEmail) > 0) {
                 errorMessage = "That email is already in use by another account."
                 return@LaunchedEffect

@@ -35,6 +35,14 @@ import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
 import kotlinx.coroutines.launch
 
+/**
+ * Real format validation (was previously just `email.contains("@")`, which let through
+ * anything with an @ in it, e.g. "a@b"). Android's built-in pattern is the standard
+ * practical check -- not full RFC 5322, but catches the actual garbage inputs that matter.
+ */
+fun isValidEmail(email: String): Boolean =
+    email.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+
 @Composable
 private fun dermaFieldColors(highContrast: Boolean) = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = DermaGreen,
@@ -68,7 +76,7 @@ fun LoginScreen(navController: NavController) {
 
     fun validate(): Boolean {
         var valid = true
-        if (email.isBlank() || !email.contains("@")) { emailError = "Please enter a valid email address"; valid = false } else emailError = ""
+        if (!isValidEmail(email)) { emailError = "Please enter a valid email address"; valid = false } else emailError = ""
         if (password.length < 6) { passwordError = "Password must be at least 6 characters"; valid = false } else passwordError = ""
         return valid
     }
@@ -229,7 +237,7 @@ fun RegisterScreen(navController: NavController) {
     fun validate(): Boolean {
         var valid = true
         if (name.isBlank()) { nameError = "Name is required"; valid = false } else nameError = ""
-        if (email.isBlank() || !email.contains("@")) { emailError = "Enter a valid email"; valid = false } else emailError = ""
+        if (!isValidEmail(email)) { emailError = "Enter a valid email"; valid = false } else emailError = ""
         if (password.length < 6) { passwordError = "Password must be at least 6 characters"; valid = false } else passwordError = ""
         if (confirmPassword != password) { confirmPasswordError = "Passwords do not match"; valid = false } else confirmPasswordError = ""
         return valid
