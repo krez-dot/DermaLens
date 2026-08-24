@@ -1,7 +1,5 @@
 package com.dermalens.app.ui.screens
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -14,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -27,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
-import kotlinx.coroutines.launch
 
 data class RecommendedProduct(
     val name: String,
@@ -192,17 +188,7 @@ fun CareGuideScreen(navController: NavController) {
             }
 
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(320, delayMillis = 80)) +
-                        slideInVertically(animationSpec = tween(320, delayMillis = 80)) { it / 8 })
-                        .togetherWith(fadeOut(animationSpec = tween(120)))
-                },
-                label = "careGuideTabContent"
-            ) { tabIndex ->
-                val guide = careGuideList[tabIndex]
-                Column {
+                val guide = careGuideList[selectedTab]
                 // Banner
                 Box(
                     modifier = Modifier.fillMaxWidth()
@@ -320,8 +306,6 @@ fun CareGuideScreen(navController: NavController) {
 
                     Spacer(modifier = Modifier.height(32.dp))
                 }
-                }
-            }
             }
         }
     }
@@ -355,28 +339,8 @@ fun CareSection(icon: ImageVector, iconBg: Color, iconTint: Color, title: String
 fun RecommendedProductCard(product: RecommendedProduct, accentColor: Color) {
     val settings = LocalAppSettings.current
 
-    // Gentle pop-in entrance when the card first appears
-    val entrance = remember { Animatable(0.92f) }
-    val entranceAlpha = remember { Animatable(0f) }
-    LaunchedEffect(product) {
-        entrance.snapTo(0.92f)
-        entranceAlpha.snapTo(0f)
-        launch { entrance.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) }
-        launch { entranceAlpha.animateTo(1f, tween(350)) }
-    }
-
-    // Subtle infinite pulse on the "Suggested" badge to draw the eye without being distracting
-    val pulse = rememberInfiniteTransition(label = "productBadgePulse")
-    val pulseScale by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "pulseScale"
-    )
-
     Card(
         modifier = Modifier.fillMaxWidth()
-            .graphicsLayer { scaleX = entrance.value; scaleY = entrance.value; alpha = entranceAlpha.value }
             .then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White),
@@ -400,7 +364,6 @@ fun RecommendedProductCard(product: RecommendedProduct, accentColor: Color) {
                     Text("Recommended OTC Product", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary, modifier = Modifier.weight(1f))
                     Box(
                         modifier = Modifier
-                            .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale }
                             .clip(RoundedCornerShape(20.dp))
                             .background(accentColor)
                             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -453,26 +416,8 @@ fun ConsultDoctorCard(note: String, onFindClinic: () -> Unit) {
     val settings = LocalAppSettings.current
     val warningRed = Color(0xFFDC2626)
 
-    val entranceAlpha = remember { Animatable(0f) }
-    val entranceOffset = remember { Animatable(12f) }
-    LaunchedEffect(note) {
-        entranceAlpha.snapTo(0f)
-        entranceOffset.snapTo(12f)
-        launch { entranceAlpha.animateTo(1f, tween(350)) }
-        launch { entranceOffset.animateTo(0f, tween(350, easing = FastOutSlowInEasing)) }
-    }
-
-    val pulse = rememberInfiniteTransition(label = "doctorIconPulse")
-    val pulseAlpha by pulse.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "pulseAlpha"
-    )
-
     Card(
-        modifier = Modifier.fillMaxWidth()
-            .graphicsLayer { alpha = entranceAlpha.value; translationY = entranceOffset.value },
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFFFEBEE) else Color(0xFFFEF2F2)),
         border = BorderStroke(1.dp, if (settings.highContrast) Color.Black else warningRed.copy(alpha = 0.25f)),
@@ -481,8 +426,7 @@ fun ConsultDoctorCard(note: String, onFindClinic: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(warningRed.copy(alpha = 0.16f))
-                        .graphicsLayer { alpha = pulseAlpha },
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(warningRed.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.MedicalServices, contentDescription = null, tint = warningRed, modifier = Modifier.size(18.dp))
