@@ -59,13 +59,15 @@ app/src/main/java/com/dermalens/app/
 ## Firebase Auth
 Registered accounts (Login/Register) go through real Firebase Authentication — a new account is a real, Firebase-Console-visible user, gets a real verification email, and password reset goes through Firebase's real "Forgot password?" email flow. Registration is required to use the app — there is no guest/offline-account path. Everything else (scan history, profile stats) stays fully local in Room DB.
 
+Email verification is enforced, not just sent: an unverified account is routed to a "Verify Your Email" screen (with Resend and Log Out options) instead of Home, on both fresh Register and every subsequent Login, until Firebase reports `isEmailVerified == true`. The `is_logged_in` session flag is only set once verified, so there's no way to reach the app's main features with an unconfirmed email.
+
 > Guest mode was implemented and briefly live on 2026-08-24, then removed on 2026-08-25 per the team's tech adviser. See "Guest Mode — Removed" in `FIREBASE_AUTH_PLAN.md` for what changed and why, if you're wondering where it went.
 
 Full rationale, the code-change list, and the capstone-manuscript impact (Scope & Limitations, IC1/IC2/SS1/SS3, Table 4, Figure 3, Privacy Policy text) are written up in [FIREBASE_AUTH_PLAN.md](FIREBASE_AUTH_PLAN.md) — read that before touching this area or updating the paper.
 
 `app/google-services.json` is required to build but is **gitignored** (it's tied to the Firebase project). Ask Mark Joseph for a copy, or get added to the Firebase project and download your own from the Console.
 
-**Live-verified so far:** Register (real Firebase account + verification email + local profile), Login (Firebase auth + resolves matching local profile), Logout (correctly signs out of Firebase too — this was a real bug, fixed), Change Password (Edit Profile → Account Security, reauthenticate + update, confirmed via a live "Saved!" success state).
+**Live-verified so far:** Register (real Firebase account + verification email + local profile), Login (Firebase auth + resolves matching local profile), Logout (correctly signs out of Firebase too — this was a real bug, fixed), Change Password (Edit Profile → Account Security, reauthenticate + update, confirmed via a live "Saved!" success state), Verify Your Email (an unverified account is correctly blocked with "Still not verified" rather than let through, and Resend Email works — confirmed live with a real unverified test account).
 
 ## For Contributors — Known Gaps / Good First Issues
 Not urgent, left for later. Good entry points if you want to help:

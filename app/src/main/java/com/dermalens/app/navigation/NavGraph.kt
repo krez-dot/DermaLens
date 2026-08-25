@@ -14,6 +14,7 @@ sealed class Screen(val route: String) {
     object Onboarding : Screen("onboarding")
     object Login : Screen("login")
     object Register : Screen("register")
+    object VerifyEmail : Screen("verify_email")
     object Home : Screen("home")
     object Scan : Screen("scan")
     object ScanResult : Screen("scan_result?imageUri={imageUri}") {
@@ -46,6 +47,9 @@ fun DermaLensNavGraph(
         }
         composable(Screen.Register.route) {
             RegisterScreen(navController = navController)
+        }
+        composable(Screen.VerifyEmail.route) {
+            VerifyEmailScreen(navController = navController)
         }
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)

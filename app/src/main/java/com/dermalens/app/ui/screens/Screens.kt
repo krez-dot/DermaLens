@@ -225,6 +225,10 @@ fun LoginScreen(navController: NavController) {
                                         )
                                     }
                                     isLoading = false
+                                    if (firebaseUser != null && !firebaseUser.isEmailVerified) {
+                                        navController.navigate(Screen.VerifyEmail.route) { popUpTo(Screen.Login.route) { inclusive = true } }
+                                        return@launch
+                                    }
                                     prefs.edit().apply {
                                         if (rememberMe) putString(DermaPrefs.KEY_REMEMBER_EMAIL, email.trim()) else remove(DermaPrefs.KEY_REMEMBER_EMAIL)
                                         putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
@@ -366,14 +370,8 @@ fun RegisterScreen(navController: NavController) {
                                                 firebaseUid = firebaseUser?.uid
                                             )
                                         )
-                                        val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                                        prefs.edit().apply {
-                                            putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
-                                            putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
-                                            apply()
-                                        }
                                         isLoading = false
-                                        navController.navigate(Screen.Home.route) { popUpTo(Screen.Register.route) { inclusive = true } }
+                                        navController.navigate(Screen.VerifyEmail.route) { popUpTo(Screen.Register.route) { inclusive = true } }
                                     } catch (e: android.database.sqlite.SQLiteConstraintException) {
                                         registerError = "An account with this email already exists."
                                         isLoading = false
@@ -447,5 +445,108 @@ fun RegisterScreen(navController: NavController) {
                 }
             }
         )
+    }
+}
+
+@Composable
+fun VerifyEmailScreen(navController: NavController) {
+    val settings = LocalAppSettings.current
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+
+    var isChecking by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    var infoMessage by remember { mutableStateOf("") }
+    val email = FirebaseAuth.getInstance().currentUser?.email ?: ""
+
+    Box(modifier = Modifier.fillMaxSize().background(settings.background)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier.size(88.dp).clip(RoundedCornerShape(24.dp)).background(DermaGreenLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.MarkEmailUnread, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(40.dp))
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Verify Your Email", fontSize = settings.textXxl.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "We sent a verification link to $email. Check your inbox (and spam folder), tap the link, then come back and continue.",
+                fontSize = settings.textMd.sp,
+                color = settings.textSecondary,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (errorMessage.isNotEmpty()) {
+                Text(errorMessage, color = Color(0xFFDC2626), fontSize = settings.textBase.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            if (infoMessage.isNotEmpty()) {
+                Text(infoMessage, color = Color(0xFF16A34A), fontSize = settings.textBase.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Button(
+                onClick = {
+                    errorMessage = ""; infoMessage = ""; isChecking = true
+                    val firebaseUser = FirebaseAuth.getInstance().currentUser
+                    firebaseUser?.reload()
+                        ?.addOnSuccessListener {
+                            isChecking = false
+                            if (firebaseUser.isEmailVerified) {
+                                prefs.edit().apply {
+                                    putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
+                                    putString(DermaPrefs.KEY_USER_EMAIL, firebaseUser.email ?: "")
+                                    apply()
+                                }
+                                navController.navigate(Screen.Home.route) { popUpTo(Screen.VerifyEmail.route) { inclusive = true } }
+                            } else {
+                                errorMessage = "Still not verified — tap the link in the email first."
+                            }
+                        }
+                        ?.addOnFailureListener { e ->
+                            isChecking = false
+                            errorMessage = firebaseAuthErrorMessage(e)
+                        }
+                },
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = DermaGreen),
+                enabled = !isChecking
+            ) {
+                if (isChecking) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                else Text("I've Verified — Continue", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    errorMessage = ""; infoMessage = ""
+                    FirebaseAuth.getInstance().currentUser?.sendEmailVerification()
+                        ?.addOnSuccessListener { infoMessage = "Verification email resent." }
+                        ?.addOnFailureListener { e -> errorMessage = firebaseAuthErrorMessage(e) }
+                },
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Resend Email", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            TextButton(onClick = {
+                FirebaseAuth.getInstance().signOut()
+                navController.navigate(Screen.Login.route) { popUpTo(Screen.VerifyEmail.route) { inclusive = true } }
+            }) {
+                Text("Log Out", fontSize = settings.textMd.sp, color = settings.textSecondary, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
