@@ -23,7 +23,7 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 | Image loading | Coil (`AsyncImage`) |
 | Maps | OSMDroid + OSRM routing API |
 | AI Model | YOLOv11 TFLite — pipeline verified working end-to-end on-device with a single-class test model; auto-detects channels-first/-last tensor layout; final multi-class model still pending |
-| Auth | Firebase Authentication (email/password) for registered accounts, hybrid with fully-local Guest Mode — see below |
+| Auth | Firebase Authentication (email/password) — registration required, no guest/offline path |
 
 ## Project Structure
 ```
@@ -56,20 +56,21 @@ app/src/main/java/com/dermalens/app/
 
 > **Want to help code?** See [SETUP.md](SETUP.md) for the full onboarding steps, including how to get `google-services.json` (needed to build — it's not in the repo, see below).
 
-## Firebase Auth + Guest Mode (new — `feature/firebase-guest-auth` branch)
-Registered accounts (Login/Register) now go through real Firebase Authentication — a new account is a real, Firebase-Console-visible user, gets a real verification email, and password reset goes through Firebase's real "Forgot password?" email flow. Everything else (scan history, profile stats, guest accounts) stays fully local in Room DB, so the app is still offline-first for everyone who doesn't want to register. Guest Mode creates one persistent local-only profile per device with no email/password at all.
+## Firebase Auth
+Registered accounts (Login/Register) go through real Firebase Authentication — a new account is a real, Firebase-Console-visible user, gets a real verification email, and password reset goes through Firebase's real "Forgot password?" email flow. Registration is required to use the app — there is no guest/offline-account path. Everything else (scan history, profile stats) stays fully local in Room DB.
+
+> Guest mode was implemented and briefly live on 2026-08-24, then removed on 2026-08-25 per the team's tech adviser. See "Guest Mode — Removed" in `FIREBASE_AUTH_PLAN.md` for what changed and why, if you're wondering where it went.
 
 Full rationale, the code-change list, and the capstone-manuscript impact (Scope & Limitations, IC1/IC2/SS1/SS3, Table 4, Figure 3, Privacy Policy text) are written up in [FIREBASE_AUTH_PLAN.md](FIREBASE_AUTH_PLAN.md) — read that before touching this area or updating the paper.
 
 `app/google-services.json` is required to build but is **gitignored** (it's tied to the Firebase project). Ask Mark Joseph for a copy, or get added to the Firebase project and download your own from the Console.
 
-**Live-verified so far:** Register (real Firebase account + verification email + local profile), Login (Firebase auth + resolves matching local profile), Guest Mode (fully offline, single persistent slot), Logout (now correctly signs out of Firebase too — this was a real bug, fixed), Change Password (Edit Profile → Account Security, reauthenticate + update, confirmed via a live "Saved!" success state).
+**Live-verified so far:** Register (real Firebase account + verification email + local profile), Login (Firebase auth + resolves matching local profile), Logout (correctly signs out of Firebase too — this was a real bug, fixed), Change Password (Edit Profile → Account Security, reauthenticate + update, confirmed via a live "Saved!" success state).
 
 ## For Contributors — Known Gaps / Good First Issues
 Not urgent, left for later. Good entry points if you want to help:
-- **Email change isn't implemented.** Edit Profile can change your name but the email field is read-only for Firebase accounts. Firebase requires a `verifyBeforeUpdateEmail()` flow (sends a confirmation link to the *new* address) — deliberately scoped out of the initial Firebase pass, see the "Open Questions" section of `FIREBASE_AUTH_PLAN.md`.
+- **Email change isn't implemented.** Edit Profile can change your name but the email field is read-only. Firebase requires a `verifyBeforeUpdateEmail()` flow (sends a confirmation link to the *new* address) — deliberately scoped out of the initial Firebase pass, see the "Open Questions" section of `FIREBASE_AUTH_PLAN.md`.
 - **"Forgot password?" email flow is implemented but not yet live-tested end-to-end** (i.e. actually clicking the reset link from a real inbox and confirming login with the new password works). Worth a pass.
-- **Guest accounts can't be upgraded to a real account later** — if a guest wants to register, they currently lose their local guest data rather than it carrying over. Also an open question in `FIREBASE_AUTH_PLAN.md`.
 - **Firebase BoM is pinned to `33.5.1`** in `app/build.gradle.kts` (see the comment there) because newer BoMs need Kotlin 2.3.0 and this project is pinned to Kotlin 2.0.21. Don't bump it without bumping Kotlin first, or the build breaks with a metadata-version mismatch.
 
 ## Development Timeline

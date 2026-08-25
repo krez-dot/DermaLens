@@ -1,6 +1,5 @@
 package com.dermalens.app.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -40,10 +39,6 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import kotlinx.coroutines.launch
-
-/** The single local-only guest profile for this device -- one guest slot, reused across
- * logout/re-guest cycles rather than a fresh throwaway account every time. */
-private const val GUEST_EMAIL = "guest@dermalens.local"
 
 /**
  * Real format validation (was previously just `email.contains("@")`, which let through
@@ -225,8 +220,7 @@ fun LoginScreen(navController: NavController) {
                                                 fullName = firebaseUser.email?.substringBefore("@") ?: "User",
                                                 email = email.trim(),
                                                 passwordHash = "",
-                                                firebaseUid = firebaseUser.uid,
-                                                isGuest = false
+                                                firebaseUid = firebaseUser.uid
                                             )
                                         )
                                     }
@@ -235,7 +229,6 @@ fun LoginScreen(navController: NavController) {
                                         if (rememberMe) putString(DermaPrefs.KEY_REMEMBER_EMAIL, email.trim()) else remove(DermaPrefs.KEY_REMEMBER_EMAIL)
                                         putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
                                         putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
-                                        putBoolean(DermaPrefs.KEY_IS_GUEST, false)
                                         apply()
                                     }
                                     navController.navigate(Screen.Home.route) { popUpTo(Screen.Login.route) { inclusive = true } }
@@ -254,33 +247,6 @@ fun LoginScreen(navController: NavController) {
             ) {
                 if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                 else Text("Sign In", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        val guest = db.userDao().getUserByEmail(GUEST_EMAIL)
-                        if (guest == null) {
-                            db.userDao().insertUser(User(fullName = "Guest", email = GUEST_EMAIL, passwordHash = "", firebaseUid = null, isGuest = true))
-                        }
-                        prefs.edit().apply {
-                            putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
-                            putString(DermaPrefs.KEY_USER_EMAIL, GUEST_EMAIL)
-                            putBoolean(DermaPrefs.KEY_IS_GUEST, true)
-                            apply()
-                        }
-                        navController.navigate(Screen.Home.route) { popUpTo(Screen.Login.route) { inclusive = true } }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(54.dp).semantics { contentDescription = "Continue as guest button" },
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.5.dp, if (settings.highContrast) Color.Black else Color(0xFFE5E7EB))
-            ) {
-                Icon(Icons.Default.PersonOutline, contentDescription = null, tint = settings.textPrimary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Continue as Guest", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -397,15 +363,13 @@ fun RegisterScreen(navController: NavController) {
                                                 fullName = name.trim(),
                                                 email = email.trim(),
                                                 passwordHash = "",
-                                                firebaseUid = firebaseUser?.uid,
-                                                isGuest = false
+                                                firebaseUid = firebaseUser?.uid
                                             )
                                         )
                                         val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
                                         prefs.edit().apply {
                                             putBoolean(DermaPrefs.KEY_IS_LOGGED_IN, true)
                                             putString(DermaPrefs.KEY_USER_EMAIL, email.trim())
-                                            putBoolean(DermaPrefs.KEY_IS_GUEST, false)
                                             apply()
                                         }
                                         isLoading = false
@@ -470,7 +434,7 @@ fun RegisterScreen(navController: NavController) {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     PrivacySection("Data We Collect", "We collect your name, email address, and skin scan images you choose to submit. Scan results including condition, severity, and confidence scores are stored locally on your device.")
                     PrivacySection("How We Use Your Data", "Your data is used solely to provide personalized skin health tracking within the app. If you enable 'Contribute to Research', anonymized scan data may be used to improve our detection model.")
-                    PrivacySection("Data Storage", "Scan history, results, and app preferences are stored locally on your device. If you register an account, your email and password are managed by Firebase Authentication (Google's infrastructure) for account verification and sign-in -- your password is never visible to us in plain text. Continuing as a guest keeps everything entirely local, with no account or email involved at all. We do not sell, rent, or share your personal information with third parties.")
+                    PrivacySection("Data Storage", "Scan history, results, and app preferences are stored locally on your device. Your email and password are managed by Firebase Authentication (Google's infrastructure) for account verification and sign-in -- your password is never visible to us in plain text. We do not sell, rent, or share your personal information with third parties.")
                     PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed images are currently kept only on your device and are not uploaded anywhere.")
                     PrivacySection("Your Rights", "You may delete your account and all associated data at any time. Scan records can be individually deleted from the Progress Tracker.")
                     PrivacySection("Medical Disclaimer", "DermaLens is for informational reference only and does not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")

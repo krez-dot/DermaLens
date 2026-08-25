@@ -22,3 +22,6 @@ local.properties
 # Firebase config carries a project API key -- share it directly with the team
 # instead of committing it (see SETUP.md for how to get one).
 app/google-services.json
+
+# Exported APKs for sharing with the team/testers -- large binaries, share via Drive not git.
+/exports/

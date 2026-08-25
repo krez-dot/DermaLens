@@ -71,7 +71,7 @@ fun ProfileScreen(navController: NavController) {
         val user = db.userDao().getUserByEmail(savedEmail)
         if (user != null) {
             userName = user.fullName
-            userEmail = if (user.isGuest) "Guest Account (not saved to the cloud)" else user.email
+            userEmail = user.email
             memberSince = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(user.createdAt))
             totalScans = db.scanRecordDao().getScanCount(user.userId)
             conditions = db.scanRecordDao().getConditionsByUser(user.userId).size
@@ -413,7 +413,6 @@ fun EditProfileScreen(navController: NavController) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var isGuest by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -436,7 +435,7 @@ fun EditProfileScreen(navController: NavController) {
         val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
         val user = db.userDao().getUserByEmail(savedEmail)
-        if (user != null) { name = user.fullName; email = user.email; isGuest = user.isGuest }
+        if (user != null) { name = user.fullName; email = user.email }
     }
 
     LaunchedEffect(saveTrigger) {
@@ -449,12 +448,11 @@ fun EditProfileScreen(navController: NavController) {
         if (user != null) {
             val trimmedName = name.trim()
             if (trimmedName.isEmpty()) { errorMessage = "Full name cannot be empty."; return@LaunchedEffect }
-            // Email is not edited here for either account type: guest accounts have no real
-            // email at all, and changing a registered account's email safely needs Firebase's
-            // verify-before-update-email flow (a second confirmation link to the new address),
-            // which is a bigger feature not wired up yet. Password changes for registered
-            // accounts *are* wired up below via Firebase reauthentication.
-            if (!isGuest && newPassword.isNotEmpty()) {
+            // Email is not edited here: changing it safely needs Firebase's verify-before-
+            // update-email flow (a second confirmation link to the new address), which is a
+            // bigger feature not wired up yet. Password changes *are* wired up below via
+            // Firebase reauthentication.
+            if (newPassword.isNotEmpty()) {
                 if (currentPassword.isEmpty()) { errorMessage = "Enter your current password to set a new one."; return@LaunchedEffect }
                 if (newPassword != confirmPassword) { errorMessage = "New passwords do not match."; return@LaunchedEffect }
                 if (newPassword.length < 6) { errorMessage = "Password must be at least 6 characters."; return@LaunchedEffect }
@@ -506,7 +504,7 @@ fun EditProfileScreen(navController: NavController) {
                     Text("Profile Info", fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold, color = settings.textSecondary)
                     OutlinedTextField(value = name, onValueChange = { name = it; isSaved = false }, label = { Text("Full name") }, leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
                     OutlinedTextField(
-                        value = if (isGuest) "No email (guest account)" else email,
+                        value = email,
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
@@ -519,19 +517,15 @@ fun EditProfileScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Account security -- guests have no password at all. Registered accounts change
-            // their password via Firebase reauthentication (re-enter current password first).
+            // Account security -- password changes go through Firebase reauthentication
+            // (re-enter current password first).
             Card(modifier = Modifier.fillMaxWidth().then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFF0F0F0) else Color.White), elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Account Security", fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold, color = settings.textSecondary)
-                    if (isGuest) {
-                        Text("Guest accounts don't have a password -- there's nothing to change here.", fontSize = settings.textSm.sp, color = settings.textSecondary)
-                    } else {
-                        Text("Leave blank to keep your current password", fontSize = settings.textSm.sp, color = settings.textSecondary)
-                        OutlinedTextField(value = currentPassword, onValueChange = { currentPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Current password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) { Icon(if (showCurrentPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-                        OutlinedTextField(value = newPassword, onValueChange = { newPassword = it; isSaved = false; errorMessage = "" }, label = { Text("New password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showNewPassword = !showNewPassword }) { Icon(if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-                        OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Confirm new password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) { Icon(if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-                    }
+                    Text("Leave blank to keep your current password", fontSize = settings.textSm.sp, color = settings.textSecondary)
+                    OutlinedTextField(value = currentPassword, onValueChange = { currentPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Current password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) { Icon(if (showCurrentPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+                    OutlinedTextField(value = newPassword, onValueChange = { newPassword = it; isSaved = false; errorMessage = "" }, label = { Text("New password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showNewPassword = !showNewPassword }) { Icon(if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+                    OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Confirm new password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) { Icon(if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
                 }
             }
 

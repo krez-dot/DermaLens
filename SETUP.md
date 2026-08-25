@@ -25,14 +25,8 @@ git clone https://github.com/krez-dot/DermaLens.git
 cd DermaLens
 ```
 
-**Important:** active Firebase/guest-mode work is happening on a separate branch, not `master`.
-Check it out:
-
-```
-git checkout feature/firebase-guest-auth
-```
-
-(If that branch doesn't exist yet when you clone, ask Mark Joseph — it may not be pushed yet.)
+Firebase Authentication is already merged into `master` — just clone and stay on `master`, no
+branch switch needed.
 
 ## 3. Open in Android Studio
 
