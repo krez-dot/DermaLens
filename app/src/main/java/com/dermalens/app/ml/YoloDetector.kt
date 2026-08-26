@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import androidx.compose.ui.graphics.Color
 import com.dermalens.app.ui.screens.DetectionResult
 import com.dermalens.app.ui.screens.NormalizedBox
 import com.dermalens.app.ui.screens.mockDetectionResults
@@ -24,6 +25,31 @@ private val CLASS_LABELS = listOf("Melasma")
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
 }
+
+// Below this overall confidence, the model isn't committing to a real answer -- with only
+// one class trained (see CLASS_LABELS above), the model has no way to say "not skin" or "no
+// condition," so a photo of a wall or a hand or wood grain still returns *some* score for
+// "Melasma" because that's the only label that exists. Rather than show a confident-looking
+// percentage for what's actually a meaningless answer, anything below this floor is reported
+// honestly as "no clear condition" instead. 40% is a starting value (roughly "less likely
+// than not"), not a tuned one -- revisit once the multi-class model trained with real negative
+// examples exists, since a properly trained model can learn to say "no" instead of needing a
+// floor bolted on afterward.
+private const val MIN_CONFIDENCE_PERCENT = 40f
+
+private fun lowConfidenceResult(confidencePercent: Float) = DetectionResult(
+    condition = "No Clear Condition Detected",
+    confidence = confidencePercent,
+    severity = "Unclear",
+    description = "The scan didn't clearly match any condition this app currently recognizes. This can happen if the photo isn't of skin, is blurry or poorly lit, or doesn't clearly show an affected area.",
+    symptoms = listOf(
+        "Retake the photo in good, even lighting",
+        "Make sure the affected skin fills the guide frame",
+        "Hold the camera steady and in focus"
+    ),
+    recommendation = "If you have visible skin concerns, consult a licensed dermatologist for an accurate diagnosis.",
+    color = Color(0xFF6B7280)
+)
 
 /**
  * Runs on-device YOLOv11 inference on [imageUri]. Returns null if no model is bundled yet,
@@ -60,10 +86,14 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             outputBuffer.asFloatBuffer().get(values)
 
             val (classIndex, confidence, boxes) = bestClass(values, outputShape, inputWidth, inputHeight)
+            val confidencePercent = (confidence * 100f).coerceIn(0f, 100f)
             Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence boxes=$boxes")
+            if (confidencePercent < MIN_CONFIDENCE_PERCENT) {
+                return lowConfidenceResult(confidencePercent)
+            }
             val label = CLASS_LABELS.getOrNull(classIndex) ?: return null
             val template = conditionTemplates[label] ?: return null
-            template.copy(confidence = (confidence * 100f).coerceIn(0f, 100f), boundingBoxes = boxes)
+            template.copy(confidence = confidencePercent, boundingBoxes = boxes)
         }
     } catch (e: Exception) {
         Log.e("DermaLens", "YOLO inference failed", e)

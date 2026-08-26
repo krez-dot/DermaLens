@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-25
 **Requested by:** Team tech adviser
-**Run by:** Mark Joseph Garcia (with Claude Code)
+**Run by:** Mark Joseph Garcia
 
 ## Objective
 

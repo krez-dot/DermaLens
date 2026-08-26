@@ -25,3 +25,7 @@ app/google-services.json
 
 # Exported APKs for sharing with the team/testers -- large binaries, share via Drive not git.
 /exports/
+
+# Training notebooks belong in Colab/Drive, not this repo -- also keeps a pasted API key
+# (Roboflow, etc.) in a scratch notebook from ever landing in git by accident.
+*.ipynb
