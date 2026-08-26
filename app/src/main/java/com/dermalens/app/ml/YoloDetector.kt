@@ -48,7 +48,8 @@ private fun lowConfidenceResult(confidencePercent: Float) = DetectionResult(
         "Hold the camera steady and in focus"
     ),
     recommendation = "If you have visible skin concerns, consult a licensed dermatologist for an accurate diagnosis.",
-    color = Color(0xFF6B7280)
+    color = Color(0xFF6B7280),
+    isLowConfidence = true
 )
 
 /**

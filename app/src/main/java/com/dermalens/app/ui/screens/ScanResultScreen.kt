@@ -48,7 +48,11 @@ data class DetectionResult(
     val symptoms: List<String>,
     val recommendation: String,
     val color: Color,
-    val boundingBoxes: List<NormalizedBox> = emptyList()
+    val boundingBoxes: List<NormalizedBox> = emptyList(),
+    // True when this isn't a real diagnosis, just a below-the-confidence-floor fallback
+    // (see YoloDetector.kt). The UI hides the confidence percentage in this case -- showing
+    // a number next to "no result" undermines the point of not committing to an answer.
+    val isLowConfidence: Boolean = false
 )
 
 val mockDetectionResults = listOf(
@@ -196,13 +200,15 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(
-                            modifier = Modifier.background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.confidence}% confidence" },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Verified, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("%.1f%%".format(result.confidence), color = Color.White, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold)
+                        if (!result.isLowConfidence) {
+                            Row(
+                                modifier = Modifier.background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.confidence}% confidence" },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Verified, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("%.1f%%".format(result.confidence), color = Color.White, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                         Row(
                             modifier = Modifier.background(getSeverityBg(result.severity), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.severity} severity" },
