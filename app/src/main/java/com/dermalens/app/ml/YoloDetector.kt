@@ -17,10 +17,13 @@ import java.nio.channels.FileChannel
 
 private const val MODEL_FILE_NAME = "best.tflite"
 
-// TEMPORARY: single-class test model (Melasma only), trained as an isolated sanity-check
-// per HANDOFF.md's note on validating annotations before the full multi-class merge.
-// Replace with the real class list (in training order) once the merged model is ready.
-private val CLASS_LABELS = listOf("Melasma")
+// TEMPORARY: single-class test model (Atopic Dermatitis / Eczema only), trained as an
+// isolated sanity-check per HANDOFF.md's note on validating annotations before the full
+// multi-class merge. Replace with the real class list (in training order) once the merged
+// model is ready. Note: "Atopic Dermatitis" is the app's canonical name for this condition
+// (see mockDetectionResults / Care Guide) even though the Roboflow dataset is named "eczema"
+// -- must match conditionTemplates' key below or lookups silently return null.
+private val CLASS_LABELS = listOf("Atopic Dermatitis")
 
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
