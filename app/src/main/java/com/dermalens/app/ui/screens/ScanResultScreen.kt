@@ -145,7 +145,7 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                     .fillMaxWidth()
                     .background(Brush.verticalGradient(colors = listOf(result.color.copy(alpha = 0.9f), result.color)))
                     .padding(24.dp)
-                    .semantics { contentDescription = "Detected condition: ${result.condition}, ${result.severity} severity, ${result.confidence}% confidence" }
+                    .semantics { contentDescription = if (result.isLowConfidence) "Detected condition: ${result.condition}" else "Detected condition: ${result.condition}, ${result.confidence}% confidence" }
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Box(
@@ -199,8 +199,8 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                     Text(result.condition, fontSize = settings.textTitle.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (!result.isLowConfidence) {
+                    if (!result.isLowConfidence) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Row(
                                 modifier = Modifier.background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.confidence}% confidence" },
                                 verticalAlignment = Alignment.CenterVertically
@@ -209,14 +209,6 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("%.1f%%".format(result.confidence), color = Color.White, fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold)
                             }
-                        }
-                        Row(
-                            modifier = Modifier.background(getSeverityBg(result.severity), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = "${result.severity} severity" },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(getSeverityColor(result.severity)))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(result.severity, fontSize = settings.textBase.sp, color = getSeverityColor(result.severity), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
