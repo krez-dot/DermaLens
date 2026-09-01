@@ -1,115 +1,88 @@
 # DermaLens — Developer Handoff
 
-Last updated: August 2026
-Branch: `master`
-Status: Feature-complete. YOLOv11 inference pipeline is built and verified working end-to-end with a single-class test model — only the final merged multi-class model is still pending.
+Last updated: 2026-08-28
+Branch: `master` (all work committed and pushed, working tree clean)
+Status: Firebase Auth live. Three of six target conditions have real trained/verified single-class models (Melasma, Atopic Dermatitis, Warts) — swapped in one at a time, not simultaneously. Multi-class merge still pending.
 
 ---
 
-## What's Done
+## Dev Environment Notes (read this first if starting fresh)
 
-### Auth & Session
-- Login with email + salted SHA-256 hashed password (`saltHex:hashHex` format, `verifyPassword()` in `DermaColors.kt`; backward-compatible with pre-salt accounts via a legacy unsalted-hash fallback path)
-- Register with validation (name, email, password confirmation) + duplicate-email check with a `try/catch` safety net against the race
-- Session persisted in `SharedPreferences` (`KEY_IS_LOGGED_IN`, `KEY_USER_EMAIL`)
-- "Remember me" checkbox saves email for next login
-- Auto-redirect to Home if already logged in (SplashScreen checks)
+- **JAVA_HOME isn't set by default** in this shell. JDK 17 lives at `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot` — set `$env:JAVA_HOME` before running `.\gradlew.bat` anything, in PowerShell (not Git Bash — Gradle needs PowerShell/cmd here).
+- **adb** is at `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`, **emulator** at `$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe`. AVD name: `DermaLensTest`. The emulator is not always running — check `adb devices` first, boot with `emulator.exe -avd DermaLensTest -WindowStyle Hidden` if empty, and poll `adb devices` until it shows `device` (takes 20-40s).
+- **Git Bash mangles device-absolute paths** starting with `/sdcard/...` — double the leading slash (`//sdcard/...`) when passing paths to `adb push`/`pull`/`shell` through the Bash tool, or just use PowerShell for adb calls instead.
+- **The Android system Photo Picker gets cluttered** by every screenshot taken during testing (they get indexed into the same "Recent" media view). Periodically `adb shell rm -f /sdcard/*.png` + `am force-stop com.android.providers.media.module` to reset it if the picker gets hard to navigate.
+- Full team onboarding steps (Android Studio, `google-services.json`) are in `SETUP.md`.
+
+---
+
+## Auth — Now Firebase, Not Local
+
+This changed substantially since the original local-hash implementation:
+
+- **Firebase Authentication** (email/password) — real accounts, real email verification, real password reset, visible in the Firebase Console. See `FIREBASE_AUTH_PLAN.md` for the full rationale and manuscript impact (Scope & Limitations, IC1/IC2/SS1/SS3, Table 4, Figure 3).
+- **Guest mode was added, then removed** (2026-08-24 → 2026-08-25) per the team's tech adviser. Registration is now required — no offline/no-account path. See "Guest Mode — Removed" in `FIREBASE_AUTH_PLAN.md`.
+- **Email verification is enforced**, not just sent — an unverified account is routed to a "Verify Your Email" screen instead of Home, on both fresh Register and every subsequent Login, until Firebase reports `isEmailVerified == true`. See `VerifyEmailScreen` in `Screens.kt`.
+- Password reset ("Forgot password?") **has been live-tested end-to-end** with a real inbox (not just implemented) — confirmed working.
+- Email *change* is still NOT implemented — Edit Profile's email field is read-only. Needs Firebase's `verifyBeforeUpdateEmail()` flow. Open item, see README "Good First Issues."
+
+---
+
+## YOLOv11 — Three Conditions Trained & Verified, Swap-One-At-A-Time Workflow
+
+**Important: only one `.tflite` model is bundled at a time.** `app/src/main/assets/best.tflite` gets overwritten each time a new condition's model is swapped in, and `CLASS_LABELS` in `ml/YoloDetector.kt` must be updated to match. There is no multi-class model yet — each condition was trained and verified independently.
+
+**Currently bundled: Warts** (`CLASS_LABELS = listOf("Warts")`).
+
+### Conditions trained and live-verified so far (via real app flow, real photos, not synthetic tests)
+1. **Melasma** — verified ~68-78% confidence range across multiple real photos, correct multi-region bounding boxes (bilateral detection)
+2. **Atopic Dermatitis** (Roboflow project named "eczema" — app's canonical name is "Atopic Dermatitis", matches `mockDetectionResults`/Care Guide; **must** set `CLASS_LABELS = listOf("Atopic Dermatitis")`, not `"Eczema"`, or `conditionTemplates[label]` lookup silently returns null) — verified 39.6% (below floor, correctly rejected) on a subtle photo, 59.0% (correctly identified) on a clearer one. Training log showed mAP50=0.480, P=0.554, R=0.456 — moderate accuracy, plateaued early (see below).
+3. **Warts** — verified 70.8% (single wart cluster) and 64.8% (multiple wart clusters across 3 fingers, 4 boxes drawn correctly) on two different real photos.
+
+### Remaining conditions to train (of the app's 6-condition set)
+- **Acne Vulgaris**
+- **Tinea**
+- **Scabies**
+
+### Real bugs found and fixed along the way (all committed, all live-tested)
+- **No confidence floor existed.** A single-class model has no way to say "not skin" / "no condition" — it will confidently label a photo of a wall or wood grain with *some* score for its one class, because that's the only answer it can give. Fixed: `MIN_CONFIDENCE_PERCENT = 40f` in `YoloDetector.kt` — below this, the app returns a `lowConfidenceResult()` ("No Clear Condition Detected") instead of a fabricated diagnosis. Verified live with an unrelated billboard photo → correctly shows "No Clear Condition Detected," not a false label.
+- **Severity badge was fabricated.** The "Mild/Moderate/Severe" badge on the Scan Result screen was mock data, never something the model actually predicted — removed from that screen's display (`DetectionResult.severity` and the badge UI are still used by Progress Tracker's improving/worsening/stable trend feature, which is real and was deliberately left alone — only the misleading display on the result screen itself was removed).
+- Same two preprocessing gotchas as before still apply: **channels-first vs. channels-last auto-detection**, and **stretch-resize (not letterboxed) preprocessing** — see the code comments in `YoloDetector.kt`'s `preprocess()` and `bestClass()`.
+
+### Confidence threshold (`BOX_CONFIDENCE_THRESHOLD = 0.25`, box-drawing only, doesn't affect the % shown)
+A real experiment (not guessed) was run sweeping this value against one real inference pass — see `THRESHOLD_EXPERIMENT.md` for full methodology and results. Conclusion: keep 0.25, it sits safely below the point where real detections start getting dropped (~0.40).
+
+### Training data quality issue found (relevant for future training runs)
+Reviewed the actual training log for the Atopic Dermatitis run (79 epochs, early-stopped, mAP50 plateaued around 0.48 without smooth improvement — that pattern points to label/annotation inconsistency, not insufficient epochs). Two concrete causes were visually confirmed in the Roboflow project:
+1. **Junk classes from mislabeling** — the Roboflow project has stray classes (`0`, `b`, `bb`, `bjnn`) alongside the real `Eczema` class, almost certainly typos during labeling that created new classes instead of using the existing one. Boxes under these never contribute to the real class's training.
+2. **Inconsistent box tightness / wrong annotation tool** — some images were boxed edge-to-edge (whole image, uninformative), and at least 4 instances were annotated with the **Polygon** tool instead of **Bounding Box**, which Ultralytics silently drops entirely for a detection-format dataset (confirmed via the training log's `len(segments)=4, len(boxes)=768` warning).
+
+**Recommendation for future training runs (any condition):** before training, check the Roboflow project's Classes panel for stray/junk classes and merge or delete them, and spot-check that all annotations use the Bounding Box tool with reasonably tight boxes around just the affected skin — not the whole image.
+
+---
+
+## What's Done (unchanged from before, still accurate)
 
 ### Camera & Gallery
-- CameraX with `PreviewView.ImplementationMode.COMPATIBLE` (TextureView — prevents SurfaceView Z-order bleed-through on EditProfile overlap)
-- Real `ImageCapture` use case (1280x1280 target resolution, `CAPTURE_MODE_MINIMIZE_LATENCY`) — the shutter button actually takes a photo now; it used to just fake a 2-second delay and navigate with a null image URI
-- Pinch-to-zoom on the live camera preview (real CameraX `setZoomRatio`, not just a decorative guide box)
-- Gallery via `ActivityResultContracts.PickVisualMedia()` — no storage permission needed on Android 13+
-- Selected gallery image is shown in full (`ContentScale.Fit`) with pan + pinch-to-zoom so the user can position it; on capture, the photo is cropped to exactly what's inside the guide frame (`cropGalleryImageToFrame()` in `CameraScreen.kt` — mirrors the display transform as an `android.graphics.Matrix`, inverts it, maps the guide box's screen corners back into source-bitmap pixel space)
-- `READ_EXTERNAL_STORAGE` has `maxSdkVersion="32"` in manifest; `READ_MEDIA_IMAGES` for API 33+
+- CameraX with `PreviewView.ImplementationMode.COMPATIBLE`, real `ImageCapture`, pinch-to-zoom, gallery picker with pan/pinch/crop-to-frame. See prior handoff detail — unchanged.
 
 ### Scan Result
-- Detection result defaults to `mockDetectionResults.random()` when no `.tflite` model is bundled (the normal case — model binaries are gitignored, see the YOLOv11 section below) via `runYoloInference()` in `ml/YoloDetector.kt`, which returns `null` on any failure so the caller falls back safely
-- `ScanResultScreen.kt` uses `produceState` to run inference off the main thread, showing an "Analyzing your scan..." spinner while it resolves
-- Image URI passed from CameraScreen via navigation argument (URL-encoded nullable string)
-- Image displayed in the result banner using Coil `AsyncImage`
-- "Save to History" button saves `ScanRecord` to Room DB with the logged-in user's ID
-- If "Contribute to Research" is enabled, scan image is copied from the content URI to `filesDir/contributed_scans/` (permanent internal storage) before saving — nothing is uploaded anywhere yet (no upload code exists)
+- Real inference via `runYoloInference()`, falls back to `mockDetectionResults.random()` only if no model bundled or `imageUri` is null — never falls back on a low-confidence *real* result (that's the confidence-floor path instead, a genuine "no condition" result, not a random fake one).
 
 ### Progress Tracker
-- Loads real scans from Room DB grouped by condition
-- Timeline with trend indicators per scan entry (better/worse/stable)
-- Delete scan: trash icon on each entry → confirmation dialog → `deleteScan(id)` → `refreshKey++` triggers re-fetch
-- `LaunchedEffect(refreshKey)` pattern — also fires fresh on every navigation entry
+- Real scan history from Room DB, trend indicators based on `severity` (still real feature, untouched by the Scan Result severity-badge removal).
 
 ### Care Guide
-- 6 conditions: Acne Vulgaris, Atopic Dermatitis, Melasma, Tinea, Warts, Scabies
-- Each has: Overview, Routine, Dos, Don'ts, Treatments
-- Tab-based navigation between conditions
+- 6 conditions: Acne Vulgaris, Atopic Dermatitis, Melasma, Tinea, Warts, Scabies. Each has Overview/Routine/Dos/Don'ts/Treatments, plus (added by a teammate) a "Recommended OTC Product" card per condition and a "Consult a Doctor" card for Scabies specifically.
+- **Known gap:** 3 of 5 recommended OTC products reference US-specific brands not confirmed available in PH pharmacies (Lotrimin AF, Compound W, and partially La Roche-Posay/The Ordinary) — flagged, not yet fixed. See README "Good First Issues."
 
 ### Clinic Locator
-- Real GPS location via `FusedLocationProviderClient`
-- Live results from OSM's Overpass API (`healthcare:speciality=dermatology` exact tag match, 15km radius) — no hardcoded clinic list anymore. Shows an explicit "No dermatology clinics found nearby" state if genuinely nothing's in range, instead of substituting fake data
-- A regex-based name search (to also catch clinics with "skin"/"derma" in the name but not properly tagged) was tried and removed — it consistently timed out on Overpass's public instance (confirmed across several query shapes, 25-34s) and was silently contributing zero results while risking dragging down the reliable exact-tag query if bundled together
-- OSMDroid map with custom markers for clinics
-- OSRM routing API draws a route polyline to selected clinic
+- Real GPS + OSM Overpass API, no hardcoded/fake clinic data.
+- **Known gap:** "Open Now" badge defaults to `true` whenever real `opening_hours` data isn't available from OSM (same time the fallback "Contact clinic for hours" text shows) — this is misleading, a real clinic's open/closed status isn't actually known. User was going to research this themselves before a fix was implemented — check with them on where that landed. Fix would be defaulting to "Hours unknown" instead of `true`. See `isOpenNow()` in `ClinicLocatorScreen.kt`.
+- Also: Overpass only matches the exact `healthcare:speciality=dermatology` tag — a regex name-search fallback was tried and reverted (times out on the public Overpass instance). Real dermatology clinics that aren't tagged that way in OSM won't show up, even though they're on Google Maps. No fix implemented — documented as a known data-source limitation.
 
 ### Profile
-- Loads real user data (name, email, scan stats) from Room DB
-- Edit Profile: update name, email, or password (current password required for password change)
-- Contribute to Research toggle: saves `KEY_CONTRIBUTE_DATA` to SharedPreferences
-- Scan Reminders toggle: saves `KEY_NOTIFICATIONS_ENABLED` to SharedPreferences and actually calls `NotificationScheduler.scheduleDailyReminder()`/`cancelReminder()` — it used to be pure local UI state that reset to ON on every visit and didn't affect anything
-- Privacy Policy dialog: 8 sections, scrollable
-- About DermaLens dialog: version + team names
-- Accessibility: font size slider (4 steps: Small → XL), high contrast toggle
-- Logout clears `KEY_IS_LOGGED_IN`
-
-### High Contrast Mode
-All screens respect `settings.highContrast`:
-- Backgrounds: `Color.White` instead of `Color(0xFFF8F9FA)`
-- Cards: light gray bg + 1dp black border, no elevation
-- Dividers, text fields, switches all use high contrast variants
-
-### Dialogs (all consistent)
-Every `AlertDialog` in the app has:
-```kotlin
-containerColor = Color.White
-titleContentColor = Color(0xFF111827)
-textContentColor = Color(0xFF374151)
-```
-Dialogs: Logout, Privacy Policy (Profile), Privacy Policy (Register), About, Delete Scan
-
----
-
-## What's Pending
-
-### YOLOv11 TFLite Integration
-**Verified working end-to-end on a physical device** with a real single-class Melasma test model — this is genuinely just a "drop the final model in" step now, not a code-writing or debugging step. Two real bugs got found and fixed along the way (both described below), so a from-scratch model should work without surprises.
-
-**What's already done and tested:**
-- `ScanResultScreen.kt` uses `produceState` to run inference off the main thread and shows an "Analyzing your scan..." spinner while it resolves, instead of blocking on `mockDetectionResults.random()` directly
-- `ml/YoloDetector.kt` has `runYoloInference(context, imageUri): DetectionResult?` — returns `null` (safe fallback to mock) if no model file is bundled yet, the image can't be read, or inference throws
-- TFLite Gradle dependencies were already present in `build.gradle.kts`; added `androidResources { noCompress += "tflite" }` so the model file isn't corrupted by AAPT compression on mmap-load
-- Output parsing in `YoloDetector.kt` auto-adapts to either a plain classifier `[1, numClasses]` shape or a YOLO detection-head shape (`[1, 4+numClasses, numBoxes]` or transposed) by taking the max per-class score across boxes — reasonable since this screen shows a whole-image diagnosis, not bounding boxes
-- **Input tensor layout is auto-detected**, not assumed. The tested model turned out to export as channels-first `[1, 3, 640, 640]` (NCHW) rather than the usual mobile/TFLite channels-last `[1, 640, 640, 3]` (NHWC) — its input tensor is even named `serving_default_args_0`, a generic SavedModel signature rather than Ultralytics' typical friendly naming, suggesting a slightly different export path was used. Feeding it NHWC-ordered pixel data crashed with `Cannot copy to a TensorFlowLite tensor... 4915200 bytes from a Java Buffer with 23040 bytes` — a real, confusing failure mode if you hit it blind. The code now checks which axis equals 3 and writes pixel data in whichever order (planar NCHW vs. interleaved NHWC) the model actually expects.
-- **Input size is read from the model itself** (`interpreter.getInputTensor(0).shape()`), not hardcoded — no `INPUT_SIZE` constant to keep in sync anymore.
-- **Preprocessing is a plain stretch-to-square resize, not letterboxed.** Both were tested against the real model: stretching gave ~40-78% confidence depending on image quality, letterboxing (aspect-preserving resize + gray padding, the more "textbook" YOLO approach) dropped confidence to ~9% on the same photo. That strongly suggests the training data was resized by stretching, not letterboxed — likely Roboflow's default "Resize: Stretch" preprocessing option (HANDOFF/README note a Kaggle/Roboflow dataset). **If the final multi-class model behaves differently, this is the first thing to re-test** — try both and compare confidence on a known-good photo.
-
-**Steps to finish integration once the final merged model is ready:**
-1. Export YOLOv11 to `.tflite` (`model.export(format='tflite', imgsz=<your training size>)` in the same Colab notebook you trained in)
-2. Drop it into `app/src/main/assets/` — model files are gitignored (`*.tflite`), so this is a local-only step, share the file via Drive/Colab
-3. In `ml/YoloDetector.kt`, update:
-   - `MODEL_FILE_NAME` to match your filename
-   - `CLASS_LABELS` to your final training class order exactly (note the 9-class target mentioned in the Sprint 2 AI/ML note in `README.md` — the current placeholder is just `["Melasma"]` for the single-class test)
-4. Run a real scan and check logcat (tag `DermaLens`) for the `YOLO input=... output=...` line — confirms the layout auto-detection picked the right axes and shows the real output shape, useful to sanity-check against `bestClass()`'s assumptions if results look off
-
-The `DetectionResult` data class (`ScanResultScreen.kt`) is unchanged:
-```kotlin
-data class DetectionResult(
-    val condition: String,
-    val confidence: Float,
-    val severity: String,
-    val description: String,
-    val symptoms: List<String>,
-    val recommendation: String,
-    val color: Color
-)
-```
+- Unchanged from before except: password change now goes through Firebase reauthentication (`EmailAuthProvider` + `reauthenticate()` + `updatePassword()`), not local hash comparison. Email field is read-only (see Auth section above).
 
 ---
 
@@ -117,26 +90,13 @@ data class DetectionResult(
 
 | File | What it does |
 |---|---|
-| `DermaColors.kt` | Color constants, `DermaPrefs` keys, `hashPassword()` / `verifyPassword()` (salted SHA-256) |
-| `AppSettings.kt` | `AppSettings` data class with font/contrast helpers |
-| `NavGraph.kt` | All routes; `ScanResult` takes optional `imageUri` nav argument |
-| `DermaDatabase.kt` | Room DB v3, `fallbackToDestructiveMigration()` |
-| `ScanRecord.kt` | Entity: `id, userId, condition, confidence, severity, notes, scanDate, imagePath, contributedForTraining` |
-| `User.kt` | Entity: `userId, fullName, email, passwordHash, createdAt` |
-| `ScanRecordDao.kt` | `insertScan`, `getScansByUser` (Flow), `getScansByUserOnce`, `deleteScan`, etc. |
-| `ml/YoloDetector.kt` | `runYoloInference()` — model loading, layout-aware preprocessing, output parsing. See the YOLOv11 section above for what's tuned and why. |
-
-## SharedPreferences Keys (`DermaPrefs`)
-
-| Key | Type | Purpose |
-|---|---|---|
-| `KEY_IS_LOGGED_IN` | Boolean | Session gate on SplashScreen |
-| `KEY_USER_EMAIL` | String | Used to look up user in DB |
-| `KEY_REMEMBER_EMAIL` | String | Pre-fills email on LoginScreen |
-| `KEY_FONT_SIZE` | Float | `0.75f` – `1.5f` font scale |
-| `KEY_HIGH_CONTRAST` | Boolean | High contrast mode toggle |
-| `KEY_CONTRIBUTE_DATA` | Boolean | Opt-in research data collection |
-| `KEY_NOTIFICATIONS_ENABLED` | Boolean | Scan Reminders toggle, defaults true |
+| `DermaColors.kt` | Color constants, `DermaPrefs` keys (no more `KEY_IS_GUEST` — removed) |
+| `Screens.kt` | Login, Register, **VerifyEmailScreen** (new) |
+| `NavGraph.kt` | All routes, includes `Screen.VerifyEmail` |
+| `ml/YoloDetector.kt` | `runYoloInference()`, `CLASS_LABELS`, `MIN_CONFIDENCE_PERCENT`, `BOX_CONFIDENCE_THRESHOLD` — see YOLOv11 section above |
+| `ScanResultScreen.kt` | `DetectionResult` now has `isLowConfidence: Boolean = false`; severity badge removed from display, field still used by Progress Tracker |
+| `data/model/User.kt` | No more `isGuest` field (removed with guest mode) |
+| `DermaDatabase.kt` | Room DB **v5** now (bumped for guest-mode field removal) |
 
 ## DB Version History
 
@@ -145,12 +105,21 @@ data class DetectionResult(
 | 1 | Initial schema |
 | 2 | Added fields to User |
 | 3 | Added `imagePath` + `contributedForTraining` to ScanRecord |
+| 4 | Added `firebaseUid`, `isGuest` to User (Firebase Auth) |
+| 5 | Removed `isGuest` from User (guest mode removed) |
 
-Uses `fallbackToDestructiveMigration()` — DB is dropped and recreated on version bump (fine for dev/capstone, but a real `Migration` should replace this before any schema change close to a demo — see `SECURITY_TESTING.md` SEC-F4). As of this sprint the database is also excluded from Android device/cloud backup (`backup_rules.xml`, `data_extraction_rules.xml`) so account data doesn't leave the device via `adb backup` or auto cloud-backup.
+Still uses `fallbackToDestructiveMigration()` — acceptable for dev/capstone, wipes local data on every version bump.
 
 ## Known Non-Issues (VS Code)
 
-VS Code shows "Unresolved reference: androidx" on every import in Kotlin files. **These are fake.** The project builds fine in Android Studio after Gradle sync. Do not add workarounds for these errors.
+VS Code shows "Unresolved reference: androidx" on every import in Kotlin files. **These are fake.** The project builds fine via Gradle (see Dev Environment Notes above for the JAVA_HOME gotcha) or in Android Studio.
+
+## Reference Docs
+
+- `FIREBASE_AUTH_PLAN.md` — Firebase Auth rationale, guest mode history, manuscript impact
+- `THRESHOLD_EXPERIMENT.md` — confidence threshold experiment, full methodology and results
+- `SETUP.md` — groupmate onboarding
+- `README.md` — feature overview, "Good First Issues" list
 
 ---
 
