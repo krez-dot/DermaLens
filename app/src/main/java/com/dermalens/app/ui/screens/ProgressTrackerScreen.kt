@@ -101,7 +101,7 @@ fun ProgressTrackerScreen(navController: NavController) {
                     scans = scanList.map { scan ->
                         ScanEntry(
                             id = scan.id,
-                            date = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+                            date = java.text.SimpleDateFormat("MMM dd, yyyy • h:mm a", java.util.Locale.getDefault())
                                 .format(java.util.Date(scan.scanDate)),
                             severity = scan.severity,
                             confidence = scan.confidence,
@@ -419,10 +419,7 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
                         Box(modifier = Modifier.background(getSeverityBg(scan.severity), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
                             Text(scan.severity, fontSize = settings.textSm.sp, color = severityColor, fontWeight = FontWeight.SemiBold)
                         }
-                        IconButton(
-                            onClick = { showDeleteDialog = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete scan", tint = Color(0xFF9CA3AF), modifier = Modifier.size(16.dp))
                         }
                     }

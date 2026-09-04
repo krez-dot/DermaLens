@@ -19,10 +19,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.dermalens.app.R
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.navigation.Screen
@@ -92,6 +94,9 @@ fun HomeScreen(navController: NavController) {
     var firstName by remember { mutableStateOf("") }
     var recentScan by remember { mutableStateOf<ScanRecord?>(null) }
     var scanCount by remember { mutableStateOf(0) }
+    var showContributePrompt by remember {
+        mutableStateOf(NewUserSignal.pendingContributePrompt.also { NewUserSignal.pendingContributePrompt = false })
+    }
 
     LaunchedEffect(Unit) {
         val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
@@ -147,12 +152,11 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
                 }
-                Box(
-                    modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.15f)).align(Alignment.CenterEnd),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.LocalHospital, contentDescription = "DermaLens logo", tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(40.dp))
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.dermalens_logo),
+                    contentDescription = "DermaLens logo",
+                    modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).align(Alignment.CenterEnd)
+                )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -265,6 +269,47 @@ fun HomeScreen(navController: NavController) {
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    // Contribute to Research prompt -- shown once, right after a new account finishes email
+    // verification (see NewUserSignal). Existing users logging back in never see this again.
+    if (showContributePrompt) {
+        AlertDialog(
+            onDismissRequest = { showContributePrompt = false },
+            icon = { Icon(Icons.Default.Science, contentDescription = null, tint = Color(0xFF7C3AED)) },
+            title = { Text("Help Improve DermaLens?", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp, color = Color(0xFF111827)) },
+            text = {
+                Text(
+                    "Would you like to contribute your skin scan images and results to the DermaLens research dataset? This helps train and improve future versions of the AI model, especially for detecting conditions across a wider range of Filipino skin tones.\n\nYour scans are contributed anonymously and are never linked to your name or account. You can change this anytime in Profile > Contribute to Research.",
+                    fontSize = settings.textMd.sp,
+                    color = Color(0xFF374151),
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, true).apply()
+                        showContributePrompt = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text("Agree", fontSize = settings.textMd.sp) }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false).apply()
+                        showContributePrompt = false
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) { Text("Disagree", fontSize = settings.textMd.sp) }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF111827),
+            textContentColor = Color(0xFF374151)
+        )
     }
 }
 

@@ -1,5 +1,6 @@
 package com.dermalens.app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.dermalens.app.R
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.User
 import com.dermalens.app.navigation.Screen
@@ -106,14 +109,12 @@ fun LoginScreen(navController: NavController) {
         ) {
             Spacer(modifier = Modifier.height(64.dp))
 
-            Box(
+            Image(
+                painter = painterResource(id = R.drawable.dermalens_logo),
+                contentDescription = "DermaLens logo",
                 modifier = Modifier.size(80.dp).clip(RoundedCornerShape(24.dp))
-                    .background(DermaGreenLight)
-                    .then(if (settings.highContrast) Modifier.border(2.dp, Color.Black, RoundedCornerShape(24.dp)) else Modifier),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.LocalHospital, contentDescription = "DermaLens logo", tint = DermaGreen, modifier = Modifier.size(44.dp))
-            }
+                    .then(if (settings.highContrast) Modifier.border(2.dp, Color.Black, RoundedCornerShape(24.dp)) else Modifier)
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
             Text("Welcome back", fontSize = settings.textDisplay.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
@@ -505,6 +506,7 @@ fun VerifyEmailScreen(navController: NavController) {
                                     putString(DermaPrefs.KEY_USER_EMAIL, firebaseUser.email ?: "")
                                     apply()
                                 }
+                                NewUserSignal.pendingContributePrompt = true
                                 navController.navigate(Screen.Home.route) { popUpTo(Screen.VerifyEmail.route) { inclusive = true } }
                             } else {
                                 errorMessage = "Still not verified — tap the link in the email first."

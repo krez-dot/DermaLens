@@ -18,11 +18,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.dermalens.app.R
 import com.dermalens.app.navigation.Screen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,12 +71,11 @@ fun SplashScreen(navController: NavController) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier.size(120.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.2f)).border(2.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(28.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.LocalHospital, contentDescription = null, tint = Color.White, modifier = Modifier.size(64.dp))
-            }
+            Image(
+                painter = painterResource(id = R.drawable.dermalens_logo),
+                contentDescription = "DermaLens logo",
+                modifier = Modifier.size(120.dp).clip(RoundedCornerShape(28.dp))
+            )
             Spacer(modifier = Modifier.height(24.dp))
             Text("DermaLens", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Text("Skin health in your hands", fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f))

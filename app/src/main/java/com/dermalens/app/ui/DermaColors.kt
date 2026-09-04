@@ -46,3 +46,12 @@ object DermaPrefs {
     const val KEY_CONTRIBUTE_DATA = "contribute_data"
     const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
 }
+
+/**
+ * Set right before navigating a freshly-verified new account to Home, consumed once there to
+ * show the Contribute to Research consent prompt. In-memory only (not persisted) since it only
+ * needs to survive the single VerifyEmail-to-Home navigation within the same app process.
+ */
+object NewUserSignal {
+    var pendingContributePrompt: Boolean = false
+}

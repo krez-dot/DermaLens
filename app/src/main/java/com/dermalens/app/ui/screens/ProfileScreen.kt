@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.dermalens.app.R
 import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
 import androidx.compose.runtime.LaunchedEffect
@@ -379,7 +381,7 @@ fun ProfileScreen(navController: NavController) {
     if (showAboutDialog) {
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
-            icon = { Icon(Icons.Default.LocalHospital, contentDescription = null, tint = DermaGreen) },
+            icon = { Image(painter = painterResource(id = R.drawable.dermalens_logo), contentDescription = null, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))) },
             title = { Text("DermaLens", fontWeight = FontWeight.Bold, color = DermaGreen, fontSize = settings.textXl.sp) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -523,9 +525,9 @@ fun EditProfileScreen(navController: NavController) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Account Security", fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold, color = settings.textSecondary)
                     Text("Leave blank to keep your current password", fontSize = settings.textSm.sp, color = settings.textSecondary)
-                    OutlinedTextField(value = currentPassword, onValueChange = { currentPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Current password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) { Icon(if (showCurrentPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-                    OutlinedTextField(value = newPassword, onValueChange = { newPassword = it; isSaved = false; errorMessage = "" }, label = { Text("New password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showNewPassword = !showNewPassword }) { Icon(if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
-                    OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Confirm new password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) { Icon(if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) } }, visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+                    OutlinedTextField(value = currentPassword, onValueChange = { currentPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Current password") }, leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) { Icon(if (showCurrentPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (showCurrentPassword) "Hide password" else "Show password") } }, visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+                    OutlinedTextField(value = newPassword, onValueChange = { newPassword = it; isSaved = false; errorMessage = "" }, label = { Text("New password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showNewPassword = !showNewPassword }) { Icon(if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (showNewPassword) "Hide password" else "Show password") } }, visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
+                    OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; isSaved = false; errorMessage = "" }, label = { Text("Confirm new password") }, leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }, trailingIcon = { IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) { Icon(if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (showConfirmPassword) "Hide password" else "Show password") } }, visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = fieldColors)
                 }
             }
 
