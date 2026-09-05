@@ -17,10 +17,10 @@ import java.nio.channels.FileChannel
 
 private const val MODEL_FILE_NAME = "best.tflite"
 
-// TEMPORARY: single-class test model (Warts only), trained as an isolated sanity-check
+// TEMPORARY: single-class test model (Acne Vulgaris only), trained as an isolated sanity-check
 // per HANDOFF.md's note on validating annotations before the full multi-class merge.
 // Replace with the real class list (in training order) once the merged model is ready.
-private val CLASS_LABELS = listOf("Warts")
+private val CLASS_LABELS = listOf("Acne Vulgaris")
 
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
