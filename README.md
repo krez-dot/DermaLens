@@ -6,9 +6,9 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 ## Features
 - **Skin Scan** — Capture via camera (pinch-to-zoom) or pick from gallery (pan + pinch-to-zoom to position, cropped to exactly what's in the guide frame before scanning); AI detects condition, severity, and confidence, with real bounding boxes (multi-region, NMS-filtered) drawn on the full result image
 - **Scan History & Progress Tracker** — Timeline view per condition with trend indicators (improving / worsening / stable)
-- **Care Guide** — Detailed skincare routines, dos/don'ts, and treatment options for 6 common skin conditions
+- **Condition Guidance** — Description, common symptoms, and recommendations shown directly on the scan result screen (this replaced the separate Care Guide screen — the content lives with the result it applies to instead of in a parallel browsable section)
 - **Clinic Locator** — GPS-based map (OpenStreetMap + OSRM routing) to find nearby dermatology clinics
-- **Contribute to Research** — Opt-in feature to anonymously share scan data for model retraining (Filipino skin tone focus)
+- **Contribute to Research** — Opt-in, and it actually uploads: consented scans are sent over Wi-Fi to a Google Apps Script bridge that files them into per-condition folders in the project owner's own Google Drive, ready to fold into a future retraining run. Anonymous by construction — the filename is a random UUID plus the detected condition, with no account identifier anywhere in the request (see [Contribute to Research](#contribute-to-research-pipeline) below)
 - **Accessibility** — Font size slider, high contrast mode across all screens
 - **Privacy Policy** — Full in-app privacy policy dialog
 
@@ -22,29 +22,48 @@ An Android skin disease detection app built with Jetpack Compose. DermaLens lets
 | Gallery | `ActivityResultContracts.PickVisualMedia` (Android 13+) |
 | Image loading | Coil (`AsyncImage`) |
 | Maps | OSMDroid + OSRM routing API |
-| AI Model | YOLOv11 TFLite — pipeline verified working end-to-end on-device with a single-class test model; auto-detects channels-first/-last tensor layout; final multi-class model still pending |
+| AI Model | YOLOv11 TFLite — real **6-class merged model** trained and live-verified on-device (overall mAP50 0.557); auto-detects channels-first/-last tensor layout; expects stretch-to-square resize |
 | Auth | Firebase Authentication (email/password) — registration required, no guest/offline path |
+| Research uploads | Google Apps Script Web App → project owner's Google Drive, via WorkManager (`NetworkType.UNMETERED`) |
 
 ## Project Structure
 ```
-app/src/main/java/com/dermalens/app/
-├── data/
-│   ├── db/          # Room database, DAOs
-│   └── model/       # ScanRecord, User entities
-├── navigation/      # NavGraph, Screen sealed class
-└── ui/
-    ├── screens/     # All screen composables
-    │   ├── Screens.kt            # Login + Register
-    │   ├── HomeScreen.kt         # Home + bottom nav bar
-    │   ├── CameraScreen.kt       # Camera + gallery
-    │   ├── ScanResultScreen.kt   # Detection result + save
-    │   ├── ProgressTrackerScreen.kt
-    │   ├── CareGuideScreen.kt
-    │   ├── ClinicLocatorScreen.kt
-    │   └── ProfileScreen.kt      # Profile + EditProfile
-    ├── AppSettings.kt    # Font scale + high contrast state
-    └── DermaColors.kt    # Colors, DermaPrefs, hashPassword
+app/src/main/java/
+├── com/dermalens/app/
+│   ├── data/
+│   │   ├── db/          # Room database, DAOs
+│   │   └── model/       # ScanRecord, User entities
+│   ├── ml/
+│   │   └── YoloDetector.kt   # TFLite inference, NMS, CLASS_LABELS, confidence floor
+│   ├── navigation/      # NavGraph, Screen sealed class
+│   └── ui/
+│       ├── screens/     # All screen composables
+│       │   ├── Screens.kt            # Login + Register + Privacy Policy
+│       │   ├── HomeScreen.kt         # Home + bottom nav bar
+│       │   ├── CameraScreen.kt       # Camera + gallery (+ scan sweep effect)
+│       │   ├── ScanResultScreen.kt   # Detection result, condition content, save
+│       │   ├── ProgressTrackerScreen.kt
+│       │   ├── ClinicLocatorScreen.kt
+│       │   └── ProfileScreen.kt      # Profile + EditProfile
+│       ├── AppSettings.kt    # Font scale + high contrast state
+│       └── DermaColors.kt    # Colors, DermaPrefs, animation helpers
+└── worker/              # (package com.dermalens.app.worker — flat dir is intentional)
+    ├── ScanReminderWorker.kt
+    ├── ContributionUploadWorker.kt   # Research upload, Wi-Fi only
+    └── NotificationScheduler.kt      # + ContributionUploadScheduler
 ```
+
+Training/ML lives outside the app module:
+```
+training/
+├── merge_and_train_multiclass.ipynb   # the real multi-class merge + train pipeline
+├── retrain_yolo.ipynb                 # single-condition solo runs (sanity checks)
+├── train_acne_subtypes.ipynb          # standalone acne subtype experiment
+└── acne_subtypes_future/README.md     # why subtype splitting is parked
+apps-script/ContributionUpload.gs      # the Drive upload endpoint (deploy as a Web App)
+```
+
+> The `.ipynb` files are **gitignored** — they carry pasted Roboflow API keys, so they're shared via Drive/Colab rather than committed (see `.gitignore`). Ask a team member for a copy. `acne_subtypes_future/README.md` and the Apps Script *are* committed.
 
 ## Building & Running
 1. Clone the repo
@@ -68,6 +87,24 @@ Full rationale, the code-change list, and the capstone-manuscript impact (Scope 
 `app/google-services.json` is required to build but is **gitignored** (it's tied to the Firebase project). Ask Mark Joseph for a copy, or get added to the Firebase project and download your own from the Console.
 
 **Live-verified so far:** Register (real Firebase account + verification email + local profile), Login (Firebase auth + resolves matching local profile), Logout (correctly signs out of Firebase too — this was a real bug, fixed), Change Password (Edit Profile → Account Security, reauthenticate + update, confirmed via a live "Saved!" success state), Verify Your Email (an unverified account is correctly blocked with "Still not verified" rather than let through, and Resend Email works — confirmed live with a real unverified test account).
+
+## Contribute to Research pipeline
+The Profile toggle isn't decorative — consented scans genuinely leave the device. How it works end to end:
+
+1. User opts in (Profile → Contribute to Research, or the first-run prompt on Home).
+2. On **Save to History**, if consent is on, the scan's image is copied into app-private storage and the row is flagged `contributedForTraining`.
+3. A WorkManager job (`ContributionUploadWorker`, `NetworkType.UNMETERED`, ~12h period) POSTs pending images to a **Google Apps Script Web App**, which files each one into `DermaLens Contributions/<condition>/` in the script owner's own Google Drive. The row is then flagged `uploadedForTraining` so nothing uploads twice.
+
+**Why Apps Script and not Firebase Storage:** Firebase/Cloud Storage now requires the project to be on the Blaze plan — the Spark free tier no longer includes Storage at all, and activating Blaze wanted a refundable prepayment we didn't want to spend on a student project. Apps Script runs under the owner's own Google account with no billing attached, and crucially it means **no real credential ships in the APK** — only a low-value shared secret, since the script itself holds the Drive permissions.
+
+**Privacy properties, by construction rather than by promise:**
+- The request contains only the image bytes, a random-UUID filename, and the detected condition. No user ID, email, device ID, or timestamp-of-account is sent.
+- All contributions land in one shared per-condition folder tree — deliberately **not** per-user folders, since there's no user identifier to key them on and adding one would break the anonymity the consent dialog promises.
+- Wi-Fi only, so it never quietly consumes someone's mobile data.
+
+**Setup** (only needed once, by whoever owns the receiving Drive): deploy `apps-script/ContributionUpload.gs` as a Web App (Execute as: Me, Who has access: Anyone), set a `SHARED_SECRET` script property, then put the resulting `/exec` URL and the same secret into `local.properties` as `APPS_SCRIPT_URL` and `CONTRIBUTION_UPLOAD_SECRET`. Full step-by-step is in the comment header of the `.gs` file. Both values are read via `BuildConfig`, same pattern as `MAPS_API_KEY` — **never commit them**, this repo is public.
+
+> If `APPS_SCRIPT_URL` is blank the worker exits cleanly as a no-op, so the app builds and runs fine without any of this configured.
 
 ## For Contributors — Known Gaps / Good First Issues
 Not urgent, left for later. Good entry points if you want to help:
@@ -95,6 +132,14 @@ CP2 Development Plan — May – November 2026
 > **AI/ML progress note (Sprint 7):** The Melasma single-class model was exported to TFLite and tested end-to-end on a real device — correctly classified a real melasma photo at 77.7% confidence. This confirmed the app-side integration works and surfaced two real export details worth knowing for the other classes: (1) this export uses a channels-first `[1,3,H,W]` tensor layout rather than the usual channels-last `[1,H,W,3]` — the app now auto-detects either; (2) the model expects a plain stretch-to-square resize, not letterboxing — consistent with Roboflow's default "Resize: Stretch" preprocessing. See `HANDOFF.md` for the integration steps once the merged multi-class model is ready.
 >
 > **AI/ML progress note (Sprint 7, cont'd):** An audit against Chapter 4's FR7 ("visual overlay on the captured image") found `bestClass()` was discarding box coordinates entirely — fixed to extract real boxes, filtered with confidence thresholding + NMS (not just the single best box). Verified live on-device: correctly drew two separate boxes on a bilateral melasma photo (both cheeks), where the single-box version would have silently hidden the second affected region.
+>
+> **AI/ML progress note (Sprint 8) — the multi-class merge is done.** The 6-class merged model is trained, exported, bundled, and live-verified on-device. Per-class AP50: Eczema 0.643, Warts 0.641, Melasma 0.602, Acne Vulgaris 0.557, Tinea 0.525, Scabies 0.360 — **overall mAP50 0.557**. Three findings from getting there, each measured rather than assumed:
+>
+> 1. **Two source datasets were exported with the wrong preprocessing.** Melasma and Scabies used Roboflow's "Fit within" (letterbox) resize while the other four used "Stretch to" — mismatched geometry between classes in one merged dataset. Fixing both moved Scabies 0.297 → 0.360 and Melasma 0.572 → 0.602. Worth checking on *every* dataset version before training; it's silent otherwise.
+> 2. **Scabies' weakness is annotation quality, not data volume.** The confusion matrix showed it isn't confused with other conditions at all — it's simply missed (62% predicted as background). Rendering the actual boxes found the cause: 34% of source images have a *single whole-image box* (90–100% of frame) over photos containing 6–15 discrete lesions, contradicting the other 66% that are correctly boxed per-lesion. The model can't learn a coherent lesion concept from both lessons at once. 114 affected images are identified and pending re-annotation.
+> 3. **The confidence floor is now derived, not guessed.** `MIN_CONFIDENCE_PERCENT` was an arbitrary 40%; it's now 32%, taken from the trained model's own F1-confidence curve (F1 peaks at 0.55 at confidence 0.322).
+>
+> **Also measured and deliberately not shipped:** a `yolo11m` (medium) solo Melasma run scored **0.696 mAP50** vs. 0.602 for the same data on `yolo11s`, and correctly identified a real photo live — model capacity is a real lever for the smaller classes, but the full merge hasn't been retrained on it yet. Separately, a standalone 5-class acne subtype model (blackhead/whitehead/papula/pustula/nodules) scored only 0.234 mAP50 with blackhead recall at 1.5%, so subtype differentiation is parked rather than folded in — see `training/acne_subtypes_future/README.md` for the full reasoning.
 
 ## Known Limitations
 *As of now — to be updated as development progresses.*
@@ -104,17 +149,22 @@ Quick list of what's real vs. not real in the app right now.
 | Feature | Is it real? |
 |---|---|
 | Clinic Locator | Real — location + live Overpass API results; shows an honest empty state if none found nearby |
-| Skin Scan Results | Fake by default (random result) since no model ships in the repo yet — but the real pipeline is built and verified working locally with a single-class test model |
+| Skin Scan Results | Real, with a caveat — a trained 6-class model (mAP50 0.557) is live-verified on-device, but the `.tflite` is gitignored, so a **fresh clone falls back to random mock results** until you drop the model in `app/src/main/assets/` |
 | Progress Tracker | Real — pulls actual scan history from Room DB, grouped by condition with trend indicators |
+| Contribute to Research | Real — uploads to Drive via Apps Script, Wi-Fi only, anonymous; no-ops cleanly if unconfigured |
 
 - **Clinic Locator** — Location detection works fine, and clinic results come from the OSM Overpass API (exact `healthcare:speciality=dermatology` tag match only — a regex name search was tried and removed after confirming it consistently times out on Overpass's public instance regardless of query shape, silently contributing zero results). If no dermatology clinics are found within 15 km (like in Capas), the app shows an explicit "No dermatology clinics found nearby" state instead of silently substituting fake ones. Clinic "ratings" were removed entirely rather than kept as a fabricated 4.5-star placeholder — OSM/Overpass has no ratings data. The screen also checks real connectivity (`ConnectivityManager`) and shows a distinct "No Internet Connection" state with Retry, instead of a dead network looking identical to "no clinics nearby."
-- **Skin Scan Results** — Ships with `mockDetectionResults.random()` as the default, since no `.tflite` model is committed to the repo (large binaries belong in Drive/Colab, not git — see `.gitignore`). The real inference path (`ml/YoloDetector.kt`) is fully implemented and was verified end-to-end on a physical device with a real single-class Melasma model: correct classification, sensible confidence (77.7% on a clean clinical photo), and real multi-region bounding boxes (NMS-filtered, not just a single best box — verified catching both cheeks on a bilateral melasma photo, not just one). Drop a `.tflite` into `app/src/main/assets/` and update the class list to go live — see `HANDOFF.md`. The live camera now actually captures a photo via `ImageCapture` with pinch-to-zoom (previously it only faked a delay and never took a picture), and gallery-picked photos can be panned/zoomed and get cropped to exactly the guide frame before scanning.
+- **Skin Scan Results** — A real trained 6-class model works and is live-verified on-device, but the `.tflite` is **gitignored** (large binaries belong in Drive/Colab, not git — see `.gitignore`), so a fresh clone falls back to `mockDetectionResults.random()` until you drop the model into `app/src/main/assets/best.tflite`. When the real model is present: correct classification, real multi-region bounding boxes (NMS-filtered, verified catching both cheeks on a bilateral melasma photo), and results below the 32% confidence floor are reported honestly as "No Clear Condition Detected" rather than shown as a confident-looking guess. **`CLASS_LABELS` in `ml/YoloDetector.kt` must match the training class order exactly** — the merge notebook prints the exact line to paste. See `HANDOFF.md`. The live camera captures via `ImageCapture` with pinch-to-zoom, and gallery-picked photos can be panned/zoomed and get cropped to exactly the guide frame before scanning.
+- **Known model weaknesses, stated plainly** — Scabies is the weakest class (AP50 0.360) and misses roughly 60% of true cases; its dataset needs re-annotation (see the Sprint 8 note above). Acne is occasionally misread as Melasma on clean photos — a real confusion pair, since post-inflammatory hyperpigmentation from healed acne genuinely resembles melasma's brown patches. Individual scan confidence percentages vary widely photo-to-photo even for correct detections; that's expected and not a defect (mAP is the aggregate measure, a single scan's percentage is not).
+- **Scanning guidance that came out of testing** — Don't over-zoom. Cropping tightly onto a single lesion measurably *lowered* confidence (28.6% → 17.4% on the same wart photo) because the training images are framed with the lesion in surrounding skin context, not filling the frame edge to edge.
 - **Camera permission denial** — If a user permanently denies camera access ("Don't ask again"), the app detects this (`shouldShowRequestPermissionRationale`) and offers a real "Open Settings" button instead of retrying an in-app dialog Android will never show again.
 - **Progress Tracker empty state** — Matches the paper's storyboard now (Figure 22 / ERR-05): "Start Your First Scan" CTA tied directly to the empty message, not a generic bottom button.
 - **Progress Tracker** — Pulls real scan history from Room DB, grouped by condition with trend indicators. (Earlier versions of this doc incorrectly listed this as sample data — it wasn't.)
 - **Scan Reminders** — The Profile toggle now actually persists and enables/disables the daily reminder worker; it previously reset to ON on every visit and didn't affect anything.
 
-**What IS working properly:** Login / Register / Logout (passwords are salted + hashed, not stored in plain text), Edit Profile (with duplicate-email and blank-name validation), saving scans to the database (storage works, just not fed real results yet by default), Care Guide info pages, Progress Tracker, Scan Reminders. A security pass (`SECURITY_TESTING.md`) closed out the only two real findings found (unused cleartext traffic permission, DB not excluded from Android backup) — nothing high or medium severity remains open.
+**What IS working properly:** Login / Register / Logout (passwords are salted + hashed, not stored in plain text), Edit Profile (with duplicate-email and blank-name validation), saving scans to the database, on-device 6-class detection with real bounding boxes, condition guidance content on the result screen, Progress Tracker, Scan Reminders, and Contribute to Research uploads. A security pass (`SECURITY_TESTING.md`) closed out the only two real findings found (unused cleartext traffic permission, DB not excluded from Android backup) — nothing high or medium severity remains open.
+
+> **Fixed in Sprint 8:** "Save to History" could silently do nothing — if a Room schema bump wiped the `users` table while `SharedPreferences` still reported a logged-in session, the save looked up a profile row that no longer existed and gave up without any error, leaving the button visually unresponsive. It now self-heals by recreating the minimal profile row, same as the Login flow already did for fresh installs.
 
 ## Team
 - Mark Joseph Garcia
