@@ -29,3 +29,7 @@ app/google-services.json
 # Training notebooks belong in Colab/Drive, not this repo -- also keeps a pasted API key
 # (Roboflow, etc.) in a scratch notebook from ever landing in git by accident.
 *.ipynb
+
+# Claude Code session-local state -- .claude/settings.json (repo-level config, e.g.
+# includeCoAuthoredBy) is intentionally NOT ignored and should be committed.
+.claude/scheduled_tasks.lock
