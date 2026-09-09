@@ -1,5 +1,8 @@
 package com.dermalens.app.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -21,7 +24,6 @@ sealed class Screen(val route: String) {
         fun createRoute(imageUri: String?) =
             if (imageUri != null) "scan_result?imageUri=${android.net.Uri.encode(imageUri)}" else "scan_result"
     }
-    object CareGuide : Screen("care_guide")
     object ProgressTracker : Screen("progress_tracker")
     object ClinicLocator : Screen("clinic_locator")
     object Profile : Screen("profile")
@@ -34,7 +36,14 @@ fun DermaLensNavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Splash.route
+        startDestination = Screen.Splash.route,
+        // A real push/pop slide, not a fade with a subtle nudge -- the incoming screen slides
+        // in from off-screen and the outgoing one slides out a third of the way (parallax),
+        // matching the standard Android/iOS "push" navigation feel.
+        enterTransition = { slideInHorizontally(tween(320), initialOffsetX = { it }) },
+        exitTransition = { slideOutHorizontally(tween(320), targetOffsetX = { -it / 3 }) },
+        popEnterTransition = { slideInHorizontally(tween(320), initialOffsetX = { -it / 3 }) },
+        popExitTransition = { slideOutHorizontally(tween(320), targetOffsetX = { it }) }
     ) {
         composable(Screen.Splash.route) {
             SplashScreen(navController = navController)
@@ -69,9 +78,6 @@ fun DermaLensNavGraph(
                 navController = navController,
                 imageUri = backStackEntry.arguments?.getString("imageUri")
             )
-        }
-        composable(Screen.CareGuide.route) {
-            CareGuideScreen(navController = navController)
         }
         composable(Screen.ProgressTracker.route) {
             ProgressTrackerScreen(navController = navController)

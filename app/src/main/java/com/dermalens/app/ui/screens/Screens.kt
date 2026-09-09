@@ -272,7 +272,7 @@ fun LoginScreen(navController: NavController) {
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            Text("⚕️ For diagnostic reference only. Always consult a licensed dermatologist.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, lineHeight = 16.sp)
+            DiagnosticAidDisclaimer()
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -417,7 +417,7 @@ fun RegisterScreen(navController: NavController) {
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("⚕️ For diagnostic reference only. Always consult a licensed dermatologist.", fontSize = settings.textSm.sp, color = settings.textSecondary, textAlign = TextAlign.Center, lineHeight = 16.sp)
+            DiagnosticAidDisclaimer()
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -434,7 +434,7 @@ fun RegisterScreen(navController: NavController) {
                     PrivacySection("Data We Collect", "We collect your name, email address, and skin scan images you choose to submit. Scan results including condition, severity, and confidence scores are stored locally on your device.")
                     PrivacySection("How We Use Your Data", "Your data is used solely to provide personalized skin health tracking within the app. If you enable 'Contribute to Research', anonymized scan data may be used to improve our detection model.")
                     PrivacySection("Data Storage", "Scan history, results, and app preferences are stored locally on your device. Your email and password are managed by Firebase Authentication (Google's infrastructure) for account verification and sign-in -- your password is never visible to us in plain text. We do not sell, rent, or share your personal information with third parties.")
-                    PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. Contributed images are currently kept only on your device and are not uploaded anywhere.")
+                    PrivacySection("Research Contributions", "Contribution is entirely opt-in. You may toggle this off at any time in Profile > Contribute to Research. If enabled, contributed images are uploaded to secure cloud storage over Wi-Fi for use in improving the detection model -- the upload is anonymous and contains no name, email, or account information, only the image and its detected condition.")
                     PrivacySection("Your Rights", "You may delete your account and all associated data at any time. Scan records can be individually deleted from the Progress Tracker.")
                     PrivacySection("Medical Disclaimer", "DermaLens is for informational reference only and does not constitute medical advice. Always consult a licensed dermatologist for diagnosis and treatment.")
                     PrivacySection("Contact", "For privacy concerns, contact us through the app's feedback channel.")

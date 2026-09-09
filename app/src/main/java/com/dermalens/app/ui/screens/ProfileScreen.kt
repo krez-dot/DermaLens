@@ -83,10 +83,7 @@ fun ProfileScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("My Profile", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = settings.textPrimary)
-            )
+            DermaGlassTopBar(title = "My Profile", titleColor = settings.textPrimary)
         },
         bottomBar = { DermaBottomNavBar(navController) }
     ) { innerPadding ->
@@ -126,7 +123,7 @@ fun ProfileScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // Stats
-            Card(
+            EntranceAnimation { Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).offset(y = (-1).dp)
                     .then(if (settings.highContrast) Modifier.border(1.dp, Color.Black, RoundedCornerShape(16.dp)) else Modifier),
                 shape = RoundedCornerShape(16.dp),
@@ -140,11 +137,19 @@ fun ProfileScreen(navController: NavController) {
                     VerticalDivider(modifier = Modifier.height(40.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                     ProfileStatItem("$daysActive", "Days Active", "📅")
                 }
+            } }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Disclaimer — placed near the top so it's one of the first things seen
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                DiagnosticAidDisclaimer()
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Account Section
+            EntranceAnimation(delayMillis = 60) { Column {
             ProfileSectionHeader("Account")
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
@@ -166,26 +171,29 @@ fun ProfileScreen(navController: NavController) {
                     } else {
                         contributeData = false
                         prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false).apply()
+                        com.dermalens.app.worker.ContributionUploadScheduler.cancelUpload(context)
                     }
                 })
             }
+            } }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // App Section
+            EntranceAnimation(delayMillis = 120) { Column {
             ProfileSectionHeader("App")
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
                 ProfileMenuItem(icon = Icons.Default.History, iconBg = Color(0xFFF5F3FF), iconTint = Color(0xFF7C3AED), title = "Scan History", subtitle = "View all your past scans", onClick = { navController.navigate(Screen.ProgressTracker.route) })
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                ProfileMenuItem(icon = Icons.Default.MenuBook, iconBg = Color(0xFFFEF3C7), iconTint = Color(0xFFD97706), title = "Care Guide", subtitle = "Skincare tips for all conditions", onClick = { navController.navigate(Screen.CareGuide.route) })
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItem(icon = Icons.Default.LocationOn, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Find Clinics", subtitle = "Locate nearby dermatologists", onClick = { navController.navigate(Screen.ClinicLocator.route) })
             }
+            } }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // About Section
+            EntranceAnimation(delayMillis = 180) { Column {
             ProfileSectionHeader("About")
             Spacer(modifier = Modifier.height(8.dp))
             ProfileMenuCard {
@@ -193,10 +201,12 @@ fun ProfileScreen(navController: NavController) {
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
                 ProfileMenuItem(icon = Icons.Default.Shield, iconBg = Color(0xFFF0FDF4), iconTint = Color(0xFF16A34A), title = "Privacy Policy", subtitle = "How we handle your data", onClick = { showPrivacyDialog = true })
             }
+            } }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Accessibility Section
+            EntranceAnimation(delayMillis = 240) { Column {
             ProfileSectionHeader("Accessibility")
             Spacer(modifier = Modifier.height(8.dp))
             Card(
@@ -251,6 +261,7 @@ fun ProfileScreen(navController: NavController) {
                     }
                 }
             }
+            } }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -327,6 +338,7 @@ fun ProfileScreen(navController: NavController) {
                     onClick = {
                         contributeData = true
                         prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, true).apply()
+                        com.dermalens.app.worker.ContributionUploadScheduler.scheduleUpload(context)
                         showContributeDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
@@ -479,10 +491,10 @@ fun EditProfileScreen(navController: NavController) {
     Scaffold(
         containerColor = if (settings.highContrast) Color.White else Color(0xFFF8F9FA),
         topBar = {
-            TopAppBar(
-                title = { Text("Edit Profile", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Go back") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = settings.textPrimary)
+            DermaGlassTopBar(
+                title = "Edit Profile",
+                onBack = { navController.popBackStack() },
+                titleColor = settings.textPrimary
             )
         }
     ) { innerPadding ->

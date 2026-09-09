@@ -1,6 +1,7 @@
 package com.dermalens.app.ui.screens
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,26 +49,72 @@ fun DermaBottomNavBar(navController: NavController) {
     val currentDestination = navBackStackEntry?.destination
     val settings = LocalAppSettings.current
 
-    NavigationBar(
-        containerColor = if (settings.highContrast) Color.White else Color.White,
-        tonalElevation = 8.dp
-    ) {
+    @Composable
+    fun RowScope.NavItems() {
         bottomNavItems.forEach { item ->
             val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
-            NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.label, tint = if (selected) DermaGreen else if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF)) },
-                label = { Text(item.label, color = if (selected) DermaGreen else if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF), fontSize = settings.textSm.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
-                selected = selected,
-                onClick = {
-                    navController.navigate(item.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(indicatorColor = DermaGreenLight)
-            )
+            val tint = if (selected) DermaGreen else if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF)
+            val navInteractionSource = remember { MutableInteractionSource() }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .pressScale(navInteractionSource)
+                    .clickable(
+                        interactionSource = navInteractionSource,
+                        indication = null,
+                        onClick = {
+                            navController.navigate(item.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                    .padding(vertical = 10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (selected && !settings.highContrast) DermaGreenLight else Color.Transparent)
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
+                ) {
+                    Icon(item.icon, contentDescription = item.label, tint = tint)
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(item.label, color = tint, fontSize = settings.textSm.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            }
         }
+    }
+
+    // High contrast keeps the plain opaque bar -- translucency is inherently low-contrast and
+    // would fight the whole point of that accessibility setting.
+    if (settings.highContrast) {
+        Row(
+            modifier = Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding(),
+            verticalAlignment = Alignment.CenterVertically
+        ) { NavItems() }
+        return
+    }
+
+    // Experimental "liquid glass" treatment: a floating, frosted pill instead of a flush,
+    // opaque bar. No real backdrop blur (minSdk 26 predates Compose's RenderEffect blur, which
+    // needs API 31+) -- translucency alone fakes the glass read safely on every supported device
+    // instead of depending on a blur API that's unavailable to many. No shadow/border either --
+    // both render as a hard flat outline rather than a soft blur on this emulator's renderer.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color.White.copy(alpha = 0.78f)),
+            verticalAlignment = Alignment.CenterVertically
+        ) { NavItems() }
     }
 }
 
@@ -162,15 +209,9 @@ fun HomeScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // Recent Scan
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            EntranceAnimation { Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text("Recent Scan", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
-                val severityColor = when (recentScan?.severity) {
-                    "Mild" -> DermaGreen
-                    "Moderate" -> Color(0xFFF59E0B)
-                    "Severe" -> Color(0xFFDC2626)
-                    else -> DermaGreen
-                }
                 Card(
                     modifier = Modifier.fillMaxWidth()
                         .clickable {
@@ -183,18 +224,15 @@ fun HomeScreen(navController: NavController) {
                     elevation = CardDefaults.cardElevation(if (settings.highContrast) 0.dp else 2.dp)
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(if (recentScan != null) severityColor.copy(alpha = 0.12f) else DermaGreenLight), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.DocumentScanner, contentDescription = "Scan icon", tint = if (recentScan != null) severityColor else DermaGreen, modifier = Modifier.size(26.dp))
+                        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(DermaGreenLight), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.DocumentScanner, contentDescription = "Scan icon", tint = DermaGreen, modifier = Modifier.size(26.dp))
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             if (recentScan != null) {
                                 Text(recentScan!!.condition, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = settings.textPrimary)
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(recentScan!!.severity, fontSize = settings.textSm.sp, fontWeight = FontWeight.Medium, color = severityColor)
-                                    Text("  •  ${String.format("%.1f", recentScan!!.confidence)}% confidence", fontSize = settings.textSm.sp, color = settings.textSecondary)
-                                }
+                                Text("${String.format("%.1f", recentScan!!.confidence)}% confidence", fontSize = settings.textSm.sp, color = settings.textSecondary)
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(recentScan!!.scanDate)),
@@ -212,29 +250,32 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
                 }
-            }
+            } }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             // Quick Actions
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            EntranceAnimation(delayMillis = 80) { Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text("Quick Actions", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuickActionCard(icon = Icons.Default.CameraAlt, label = "Scan Skin", color = DermaGreen, modifier = Modifier.weight(1f), onClick = { navController.navigate(Screen.Scan.route) })
                     QuickActionCard(icon = Icons.Default.LocationOn, label = "Find Clinics", color = Color(0xFF0284C7), modifier = Modifier.weight(1f), onClick = { navController.navigate(Screen.ClinicLocator.route) })
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuickActionCard(icon = Icons.Default.Timeline, label = "Progress", color = Color(0xFF7C3AED), modifier = Modifier.weight(1f), onClick = { navController.navigate(Screen.ProgressTracker.route) })
-                    QuickActionCard(icon = Icons.Default.MenuBook, label = "Care Guide", color = Color(0xFFD97706), modifier = Modifier.weight(1f), onClick = { navController.navigate(Screen.CareGuide.route) })
                 }
+            } }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Disclaimer
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                DiagnosticAidDisclaimer()
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             // Tip of the Day
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            EntranceAnimation(delayMillis = 160) { Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text("Tip of the Day", fontSize = settings.textLg.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Card(
@@ -252,21 +293,8 @@ fun HomeScreen(navController: NavController) {
                         Text(tip, fontSize = settings.textBase.sp, color = if (settings.highContrast) Color(0xFF004D40) else DermaGreenDark, lineHeight = 20.sp, modifier = Modifier.weight(1f))
                     }
                 }
-            }
+            } }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Disclaimer
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                        .then(if (settings.highContrast) Modifier.border(1.5.dp, Color(0xFFE65100), RoundedCornerShape(12.dp)) else Modifier),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (settings.highContrast) Color(0xFFFFE0B2) else Color(0xFFFFF7ED))
-                ) {
-                    Text("⚕️ DermaLens is a diagnostic aid only. Always consult a licensed dermatologist for professional advice.", fontSize = settings.textSm.sp, color = Color(0xFF92400E), modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
-                }
-            }
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
@@ -290,6 +318,7 @@ fun HomeScreen(navController: NavController) {
                 Button(
                     onClick = {
                         prefs.edit().putBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, true).apply()
+                        com.dermalens.app.worker.ContributionUploadScheduler.scheduleUpload(context)
                         showContributePrompt = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),

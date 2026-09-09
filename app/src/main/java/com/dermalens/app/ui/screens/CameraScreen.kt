@@ -14,6 +14,13 @@ import coil.compose.AsyncImage
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -27,6 +34,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -313,8 +323,13 @@ fun CameraPreviewScreen(navController: NavController) {
             modifier = Modifier
                 .size(260.dp)
                 .align(Alignment.Center)
+                .clip(RoundedCornerShape(24.dp))
                 .border(2.dp, DermaGreen, RoundedCornerShape(24.dp))
-        )
+        ) {
+            if (isScanning) {
+                ScanningSweepEffect()
+            }
+        }
 
         // Bottom Controls
         Column(
@@ -409,7 +424,50 @@ fun CameraPreviewScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(12.dp))
             Text("Tap to scan your skin", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(modifier = Modifier.padding(horizontal = 24.dp)) {
+                DiagnosticAidDisclaimer()
+            }
         }
+    }
+}
+
+/** Radar-style scanning sweep drawn inside the guide frame while a scan is analyzing -- a
+ *  horizontal line sweeps top-to-bottom on a loop, trailing a soft gradient glow behind it,
+ *  giving a genuine "scanning in progress" feel without depending on a third-party asset. */
+@Composable
+fun ScanningSweepEffect() {
+    val infiniteTransition = rememberInfiniteTransition(label = "scanSweep")
+    val sweepProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweepProgress"
+    )
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val lineY = size.height * sweepProgress
+        val trailHeight = size.height * 0.4f
+        val trailTop = (lineY - trailHeight).coerceAtLeast(0f)
+
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Transparent, DermaGreen.copy(alpha = 0.4f)),
+                startY = trailTop,
+                endY = lineY
+            ),
+            topLeft = Offset(0f, trailTop),
+            size = Size(size.width, lineY - trailTop)
+        )
+        drawLine(
+            color = DermaGreen,
+            start = Offset(0f, lineY),
+            end = Offset(size.width, lineY),
+            strokeWidth = 3.dp.toPx()
+        )
     }
 }
 

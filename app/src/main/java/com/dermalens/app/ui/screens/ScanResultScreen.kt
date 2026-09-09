@@ -1,5 +1,9 @@
 package com.dermalens.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.ScanRecord
+import com.dermalens.app.data.model.User
 import com.dermalens.app.ui.screens.DermaPrefs
 import com.dermalens.app.ml.runYoloInference
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +44,14 @@ import kotlinx.coroutines.withContext
 
 /** A detection box normalized to [0,1] relative to the analyzed image, left/top/right/bottom. */
 data class NormalizedBox(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+/** One alternate condition the model considered plausible, ranked below the primary result. */
+data class DifferentialCandidate(
+    val condition: String,
+    val confidencePercent: Float,
+    val distinguishingFeature: String,
+    val color: Color
+)
 
 data class DetectionResult(
     val condition: String,
@@ -49,6 +62,13 @@ data class DetectionResult(
     val recommendation: String,
     val color: Color,
     val boundingBoxes: List<NormalizedBox> = emptyList(),
+    // What visually sets this condition apart from ones it commonly gets confused with. Shown as
+    // this condition's line when it appears as a differential candidate for a different result.
+    val distinguishingFeature: String = "",
+    // Other conditions the model's own class scores ranked as plausible for this scan, most
+    // confident first. Empty when the model has only one trained class (nothing to rank against)
+    // or when no other class scored above the noise floor.
+    val differentials: List<DifferentialCandidate> = emptyList(),
     // True when this isn't a real diagnosis, just a below-the-confidence-floor fallback
     // (see YoloDetector.kt). The UI hides the confidence percentage in this case -- showing
     // a number next to "no result" undermines the point of not committing to an answer.
@@ -56,31 +76,23 @@ data class DetectionResult(
 )
 
 val mockDetectionResults = listOf(
-    DetectionResult("Acne Vulgaris", 94.3f, "Moderate", "Acne vulgaris is a common skin condition that occurs when hair follicles become clogged with oil and dead skin cells, causing whiteheads, blackheads, or pimples.", listOf("Whiteheads", "Blackheads", "Papules", "Pustules"), "Consult a dermatologist. Use gentle cleansers and avoid picking or squeezing affected areas.", Color(0xFFE53935)),
-    DetectionResult("Atopic Dermatitis", 87.6f, "Mild", "Atopic dermatitis (eczema) is a condition that makes your skin red and itchy. It is common in children but can occur at any age.", listOf("Dry skin", "Itching", "Red patches", "Skin flaking"), "Keep skin moisturized. Avoid known triggers. Consult a dermatologist for topical treatments.", Color(0xFFFF9800)),
-    DetectionResult("Melasma", 91.2f, "Mild", "Melasma is a skin condition presenting as brown or blue-gray patches, usually on the face. It is associated with hormonal changes and sun exposure.", listOf("Brown patches", "Facial discoloration", "Symmetrical patches"), "Use broad-spectrum sunscreen daily. Avoid sun exposure. Consult a dermatologist for treatment options.", Color(0xFF795548)),
-    DetectionResult("Tinea", 89.5f, "Moderate", "Tinea is a fungal infection of the skin. It can affect different parts of the body and is usually characterized by a ring-shaped rash.", listOf("Ring-shaped rash", "Itching", "Scaly skin", "Redness"), "Use antifungal cream as prescribed. Keep skin dry and clean. Consult a dermatologist.", Color(0xFF4CAF50)),
-    DetectionResult("Warts", 96.1f, "Mild", "Warts are small growths caused by the human papillomavirus (HPV). They can appear anywhere on the body and are usually harmless.", listOf("Small flesh-colored bumps", "Rough texture", "Black dots"), "Avoid touching or scratching warts. Consult a dermatologist for removal options.", Color(0xFF9C27B0)),
-    DetectionResult("Scabies", 88.4f, "Severe", "Scabies is an itchy skin condition caused by a tiny burrowing mite. The intense itching associated with scabies is an allergic reaction to the mite.", listOf("Intense itching", "Thin burrow tracks", "Rash", "Sores"), "Seek immediate medical attention. Treatment requires prescription medication. Wash all clothing and bedding.", Color(0xFFF44336))
+    // The currently-bundled 6-class model still outputs "Acne Vulgaris" as one label (the acne
+    // subtype split below is a standalone experiment, not yet folded into the bundled model -- see
+    // training/acne_subtypes_future and train_acne_subtypes.ipynb). Keep this entry until the
+    // bundled model itself is retrained on the 5 subtypes, or conditionTemplates[label] returns
+    // null for a real Acne Vulgaris detection and the result screen hangs on "Analyzing your scan..."
+    DetectionResult("Acne Vulgaris", 94.3f, "Moderate", "Acne vulgaris is a common skin condition that occurs when hair follicles become clogged with oil and dead skin cells, causing whiteheads, blackheads, or pimples.", listOf("Whiteheads", "Blackheads", "Papules", "Pustules"), "Consult a dermatologist. Use gentle cleansers and avoid picking or squeezing affected areas.", Color(0xFFE53935), distinguishingFeature = "Clusters of whiteheads, blackheads, or inflamed pimples concentrated on the face, chest, or back."),
+    DetectionResult("Blackhead Acne", 94.3f, "Mild", "Blackheads are a mild, non-inflammatory form of acne that occurs when a hair follicle becomes clogged with oil and dead skin cells, and the clog's surface oxidizes and turns dark when exposed to air.", listOf("Small dark or black bumps", "Flat or slightly raised", "No redness or pain", "Common on nose, forehead, and chin"), "Use salicylic acid or benzoyl peroxide cleansers to help unclog pores. Avoid squeezing, which can cause scarring. Consult a dermatologist for persistent cases.", Color(0xFF424242), distinguishingFeature = "Small dark, flat bumps with no surrounding redness or inflammation — the clogged pore's surface has oxidized to a dark color."),
+    DetectionResult("Whitehead Acne", 92.1f, "Mild", "Whiteheads are a mild, non-inflammatory form of acne where a clogged hair follicle stays closed beneath the skin's surface, forming a small white or flesh-colored bump.", listOf("Small white or skin-colored bumps", "Closed, not open like blackheads", "No redness or pain", "Often found in clusters"), "Use gentle exfoliants or retinoid creams to help clear clogged pores. Avoid picking, which can lead to inflammation or scarring. Consult a dermatologist if it persists.", Color(0xFFFFB300), distinguishingFeature = "Small closed bumps just under the skin's surface, white or skin-toned, without the dark oxidized center seen in blackheads."),
+    DetectionResult("Papular Acne", 90.4f, "Moderate", "Papules are small, inflamed acne bumps that form when a clogged pore's walls break down, causing redness and mild swelling without visible pus.", listOf("Small red, raised bumps", "Tender to touch", "No visible pus", "Can be widespread or localized"), "Use benzoyl peroxide or topical retinoids to reduce inflammation. Avoid picking to prevent scarring. Consult a dermatologist if papules are widespread or persistent.", Color(0xFFE53935), distinguishingFeature = "Small, firm, red bumps without a visible white or yellow center — inflamed but not yet pus-filled."),
+    DetectionResult("Pustular Acne", 91.8f, "Moderate", "Pustules are inflamed acne lesions filled with pus, appearing as red bumps with a white or yellow center. They form when the body's immune response to clogged, infected pores intensifies.", listOf("Red bumps with white or yellow center", "Tender or painful", "Pus-filled", "Common on face, chest, or back"), "Use benzoyl peroxide or prescribed topical/oral antibiotics. Avoid squeezing, which can spread infection and cause scarring. Consult a dermatologist for persistent or widespread pustules.", Color(0xFFFF7043), distinguishingFeature = "Red, inflamed bumps with a distinct white or yellow pus-filled center, unlike the solid red bumps of papules."),
+    DetectionResult("Nodular Acne", 89.7f, "Severe", "Nodules are large, firm, and often painful lumps that form deep under the skin when clogged, inflamed pores damage surrounding tissue. This is a more severe form of acne that can lead to scarring.", listOf("Large, firm lumps under the skin", "Painful to touch", "Deep-seated, not surface-level", "Can persist for weeks"), "Seek dermatologist care — nodular acne often requires prescription oral medication and is prone to scarring if untreated. Avoid picking or squeezing.", Color(0xFFB71C1C), distinguishingFeature = "Large, firm, painful lumps deep under the skin, unlike the smaller surface-level bumps of other acne types."),
+    DetectionResult("Eczema", 87.6f, "Mild", "Eczema (atopic dermatitis) is a condition that makes your skin red and itchy. It is common in children but can occur at any age.", listOf("Dry skin", "Itching", "Red patches", "Skin flaking"), "Keep skin moisturized. Avoid known triggers. Consult a dermatologist for topical treatments.", Color(0xFFFF9800), distinguishingFeature = "Diffuse dry, itchy, red patches with no sharp border, often in skin folds like elbows and knees."),
+    DetectionResult("Melasma", 91.2f, "Mild", "Melasma is a skin condition presenting as brown or blue-gray patches, usually on the face. It is associated with hormonal changes and sun exposure.", listOf("Brown patches", "Facial discoloration", "Symmetrical patches"), "Use broad-spectrum sunscreen daily. Avoid sun exposure. Consult a dermatologist for treatment options.", Color(0xFF795548), distinguishingFeature = "Flat, symmetrical brown patches on sun-exposed areas like the cheeks and forehead — no itching or raised texture."),
+    DetectionResult("Tinea", 89.5f, "Moderate", "Tinea is a fungal infection of the skin. It can affect different parts of the body and is usually characterized by a ring-shaped rash.", listOf("Ring-shaped rash", "Itching", "Scaly skin", "Redness"), "Use antifungal cream as prescribed. Keep skin dry and clean. Consult a dermatologist.", Color(0xFF4CAF50), distinguishingFeature = "A distinct ring-shaped patch with a raised, scaly border and a clearer center, spreading outward."),
+    DetectionResult("Warts", 96.1f, "Mild", "Warts are small growths caused by the human papillomavirus (HPV). They can appear anywhere on the body and are usually harmless.", listOf("Small flesh-colored bumps", "Rough texture", "Black dots"), "Avoid touching or scratching warts. Consult a dermatologist for removal options.", Color(0xFF9C27B0), distinguishingFeature = "Small, rough-textured, flesh-colored bumps, sometimes with tiny black dots — usually not itchy or red."),
+    DetectionResult("Scabies", 88.4f, "Severe", "Scabies is an itchy skin condition caused by a tiny burrowing mite. The intense itching associated with scabies is an allergic reaction to the mite.", listOf("Intense itching", "Thin burrow tracks", "Rash", "Sores"), "Seek immediate medical attention. Treatment requires prescription medication. Wash all clothing and bedding.", Color(0xFFF44336), distinguishingFeature = "Intense itching that's worse at night, with thin thread-like burrow tracks, often between fingers or on wrists.")
 )
-
-fun getSeverityColor(severity: String): Color {
-    return when (severity) {
-        "Mild" -> Color(0xFF16A34A)
-        "Moderate" -> Color(0xFFD97706)
-        "Severe" -> Color(0xFFDC2626)
-        else -> Color.Gray
-    }
-}
-
-fun getSeverityBg(severity: String): Color {
-    return when (severity) {
-        "Mild" -> Color(0xFFDCFCE7)
-        "Moderate" -> Color(0xFFFEF3C7)
-        "Severe" -> Color(0xFFFEE2E2)
-        else -> Color(0xFFF3F4F6)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,19 +131,26 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
     // the image itself) lines up pixel-for-pixel with no letterbox offset to account for.
     var imageAspectRatio by remember(imageUri) { mutableStateOf(1f) }
 
+    // The result "reveal" -- this composable only reaches this point once, the first time
+    // loadedResult resolves (the isLoading branch above returns early), so a plain remember +
+    // LaunchedEffect toggle is enough to trigger a genuine one-time entrance, not a replay on
+    // every recomposition.
+    var revealed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { revealed = true }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Scan Result", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = false } } }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Go back to home")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = Color(0xFF111827))
+            DermaGlassTopBar(
+                title = "Scan Result",
+                onBack = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = false } } },
+                titleColor = Color(0xFF111827)
             )
         }
     ) { innerPadding ->
+        AnimatedVisibility(
+            visible = revealed,
+            enter = fadeIn(tween(420)) + scaleIn(tween(420), initialScale = 0.94f)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -238,6 +257,39 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                     }
                 }
 
+                if (result.differentials.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Differential Diagnosis Card
+                    ResultCard(icon = Icons.Default.Rule, iconBg = Color(0xFFEFF6FF), iconTint = Color(0xFF2563EB), title = "Other Possibilities") {
+                        Text(
+                            "The scan also picked up some resemblance to these conditions. A dermatologist should confirm which one it actually is.",
+                            fontSize = settings.textSm.sp,
+                            color = Color(0xFF6B7280),
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        result.differentials.forEach { candidate ->
+                            Row(
+                                modifier = Modifier.padding(vertical = 6.dp)
+                                    .semantics { contentDescription = "Also considered: ${candidate.condition}, ${candidate.confidencePercent}% confidence" },
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Box(modifier = Modifier.padding(top = 5.dp).size(8.dp).clip(CircleShape).background(candidate.color))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(candidate.condition, fontSize = settings.textMd.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1a1a1a))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("%.1f%%".format(candidate.confidencePercent), fontSize = settings.textSm.sp, color = Color(0xFF6B7280))
+                                    }
+                                    Text(candidate.distinguishingFeature, fontSize = settings.textSm.sp, color = Color(0xFF6B7280), lineHeight = 16.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Recommendation Card
@@ -248,17 +300,7 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Disclaimer
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(if (settings.highContrast) Color(0xFFFFE0B2) else Color(0xFFFFF7ED))
-                        .then(if (settings.highContrast) Modifier.border(1.dp, Color(0xFFE65100), RoundedCornerShape(12.dp)) else Modifier)
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text("⚕️", fontSize = settings.textMd.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("This result is AI-generated and for reference only. Always consult a licensed dermatologist for accurate diagnosis.", fontSize = settings.textBase.sp, color = Color(0xFF92400E), lineHeight = 18.sp)
-                }
+                DiagnosticAidDisclaimer()
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -277,26 +319,26 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
-                    onClick = { navController.navigate(Screen.CareGuide.route) },
-                    modifier = Modifier.fillMaxWidth().height(52.dp).semantics { contentDescription = "View care guide for ${result.condition}" },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DermaGreen)
-                ) {
-                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("View Care Guide", fontSize = settings.textLg.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(
                     onClick = {
                         if (!isSaved) {
                             scope.launch {
                                 val db = DermaDatabase.getDatabase(context)
                                 val prefs = context.getSharedPreferences(DermaPrefs.PREFS_NAME, android.content.Context.MODE_PRIVATE)
                                 val savedEmail = prefs.getString(DermaPrefs.KEY_USER_EMAIL, "") ?: ""
-                                val user = db.userDao().getUserByEmail(savedEmail)
+                                var user = db.userDao().getUserByEmail(savedEmail)
+                                if (user == null && savedEmail.isNotBlank()) {
+                                    // No local profile row for this logged-in session (e.g. it was
+                                    // lost to a schema migration) -- self-heal the same way Login's
+                                    // sign-in flow does, so saving a scan doesn't silently no-op.
+                                    db.userDao().insertUser(
+                                        User(
+                                            fullName = savedEmail.substringBefore("@"),
+                                            email = savedEmail,
+                                            passwordHash = ""
+                                        )
+                                    )
+                                    user = db.userDao().getUserByEmail(savedEmail)
+                                }
                                 if (user != null) {
                                     val contributeEnabled = prefs.getBoolean(DermaPrefs.KEY_CONTRIBUTE_DATA, false)
                                     var savedImagePath = ""
@@ -353,6 +395,7 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
 
                 Spacer(modifier = Modifier.height(32.dp))
             }
+        }
         }
     }
 }

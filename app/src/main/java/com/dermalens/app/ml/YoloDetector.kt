@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.dermalens.app.ui.screens.DetectionResult
+import com.dermalens.app.ui.screens.DifferentialCandidate
 import com.dermalens.app.ui.screens.NormalizedBox
 import com.dermalens.app.ui.screens.mockDetectionResults
 import org.tensorflow.lite.Interpreter
@@ -17,25 +18,33 @@ import java.nio.channels.FileChannel
 
 private const val MODEL_FILE_NAME = "best.tflite"
 
-// TEMPORARY: single-class test model (Acne Vulgaris only), trained as an isolated sanity-check
-// per HANDOFF.md's note on validating annotations before the full multi-class merge.
-// Replace with the real class list (in training order) once the merged model is ready.
-private val CLASS_LABELS = listOf("Acne Vulgaris")
+// The real 6-class merged model (training/merge_and_train_multiclass.ipynb). Order matches the
+// notebook's CONDITIONS list exactly -- that's what the class indices were trained against.
+// Overall mAP50 0.557; per-class: Acne Vulgaris 0.557, Eczema 0.643, Melasma 0.602, Tinea 0.525,
+// Warts 0.641, Scabies 0.360 (weakest -- recall issue per the confusion matrix, not confused with
+// another class, just often missed; likely loose/inconsistent box annotations on that dataset).
+// Solo-verified separately: a yolo11m Melasma-only run scored 0.696 mAP50 (up from 0.602 on
+// yolo11s) and correctly identified a real photo at 52.1% confidence -- see retrain_yolo.ipynb.
+// Not yet folded into this merged model.
+private val CLASS_LABELS = listOf("Acne Vulgaris", "Eczema", "Melasma", "Tinea", "Warts", "Scabies")
 
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
 }
 
-// Below this overall confidence, the model isn't committing to a real answer -- with only
-// one class trained (see CLASS_LABELS above), the model has no way to say "not skin" or "no
-// condition," so a photo of a wall or a hand or wood grain still returns *some* score for
-// "Melasma" because that's the only label that exists. Rather than show a confident-looking
-// percentage for what's actually a meaningless answer, anything below this floor is reported
-// honestly as "no clear condition" instead. 40% is a starting value (roughly "less likely
-// than not"), not a tuned one -- revisit once the multi-class model trained with real negative
-// examples exists, since a properly trained model can learn to say "no" instead of needing a
-// floor bolted on afterward.
-private const val MIN_CONFIDENCE_PERCENT = 40f
+// Below this overall confidence, the model isn't committing to a real answer -- rather than show
+// a confident-looking percentage for a weak/ambiguous guess, anything below this floor is
+// reported honestly as "no clear condition" instead. Set from the merged model's own
+// BoxF1_curve.png (dermalens_multiclass_run): F1 across all classes peaks at 0.55 at confidence
+// 0.322 -- this is that real F1-optimal cutoff, not a guess. Re-derive from the new run's
+// BoxF1_curve.png any time the model is retrained, since the optimal point shifts with it.
+private const val MIN_CONFIDENCE_PERCENT = 32f
+
+// Below this, a class's score is treated as noise rather than a plausible differential -- with
+// only 40% (MIN_CONFIDENCE_PERCENT above) needed to commit to the primary result, a much lower
+// floor here still filters out the long tail of near-zero scores every untrained class gets.
+private const val MIN_DIFFERENTIAL_PERCENT = 15f
+private const val MAX_DIFFERENTIALS = 2
 
 private fun lowConfidenceResult(confidencePercent: Float) = DetectionResult(
     condition = "No Clear Condition Detected",
@@ -86,7 +95,7 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             val values = FloatArray(outputSize)
             outputBuffer.asFloatBuffer().get(values)
 
-            val (classIndex, confidence, boxes) = bestClass(values, outputShape, inputWidth, inputHeight)
+            val (classIndex, confidence, boxes, classScores) = bestClass(values, outputShape, inputWidth, inputHeight)
             val confidencePercent = (confidence * 100f).coerceIn(0f, 100f)
             Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence boxes=$boxes")
             if (confidencePercent < MIN_CONFIDENCE_PERCENT) {
@@ -94,7 +103,20 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             }
             val label = CLASS_LABELS.getOrNull(classIndex) ?: return null
             val template = conditionTemplates[label] ?: return null
-            template.copy(confidence = confidencePercent, boundingBoxes = boxes)
+
+            val differentials = classScores.indices
+                .filter { it != classIndex }
+                .map { idx -> idx to (classScores[idx] * 100f).coerceIn(0f, 100f) }
+                .filter { (_, percent) -> percent >= MIN_DIFFERENTIAL_PERCENT }
+                .sortedByDescending { (_, percent) -> percent }
+                .take(MAX_DIFFERENTIALS)
+                .mapNotNull { (idx, percent) ->
+                    val candidateLabel = CLASS_LABELS.getOrNull(idx) ?: return@mapNotNull null
+                    val candidateTemplate = conditionTemplates[candidateLabel] ?: return@mapNotNull null
+                    DifferentialCandidate(candidateLabel, percent, candidateTemplate.distinguishingFeature, candidateTemplate.color)
+                }
+
+            template.copy(confidence = confidencePercent, boundingBoxes = boxes, differentials = differentials)
         }
     } catch (e: Exception) {
         Log.e("DermaLens", "YOLO inference failed", e)
@@ -155,6 +177,15 @@ private fun preprocess(bitmap: Bitmap, width: Int, height: Int, channelsFirst: B
 private const val BOX_CONFIDENCE_THRESHOLD = 0.25f // Ultralytics' standard candidate-box cutoff
 private const val NMS_IOU_THRESHOLD = 0.45f // Ultralytics' standard NMS overlap cutoff
 
+/** [classScores] holds every class's own confidence (not just the winner's), so callers can
+ *  rank differentials from the model's actual output instead of only seeing the top pick. */
+private data class ClassificationResult(
+    val bestIndex: Int,
+    val bestConfidence: Float,
+    val boxes: List<NormalizedBox>,
+    val classScores: FloatArray
+)
+
 /**
  * Picks the highest-confidence class from the model's raw output, along with every distinct
  * region of that class found in the image (normalized to [0,1] relative to the model's square
@@ -167,14 +198,14 @@ private const val NMS_IOU_THRESHOLD = 0.45f // Ultralytics' standard NMS overlap
  *    non-max suppression collapses duplicate/overlapping detections of the same region while
  *    keeping genuinely separate ones (e.g. left cheek and right cheek).
  */
-private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inputHeight: Int): Triple<Int, Float, List<NormalizedBox>> {
+private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inputHeight: Int): ClassificationResult {
     if (shape.size == 2) {
         var bestIdx = 0
         var bestVal = values[0]
         for (i in values.indices) {
             if (values[i] > bestVal) { bestVal = values[i]; bestIdx = i }
         }
-        return Triple(bestIdx, bestVal, emptyList())
+        return ClassificationResult(bestIdx, bestVal, emptyList(), values.copyOf())
     }
 
     val numClasses = CLASS_LABELS.size
@@ -236,7 +267,7 @@ private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inpu
         }
     }
 
-    return Triple(bestIdx, bestVal, kept)
+    return ClassificationResult(bestIdx, bestVal, kept, classScores)
 }
 
 private fun iou(a: NormalizedBox, b: NormalizedBox): Float {

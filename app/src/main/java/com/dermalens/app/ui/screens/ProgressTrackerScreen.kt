@@ -1,9 +1,17 @@
 package com.dermalens.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,46 +35,23 @@ import com.dermalens.app.navigation.Screen
 import com.dermalens.app.ui.LocalAppSettings
 import kotlinx.coroutines.launch
 
-data class ScanEntry(val id: Int, val date: String, val severity: String, val confidence: Float, val notes: String)
+data class ScanEntry(val id: Int, val date: String, val confidence: Float, val notes: String)
 data class ConditionTrack(val condition: String, val color: Color, val emoji: String, val scans: List<ScanEntry>)
 
 val mockProgressData = listOf(
-    ConditionTrack("Acne Vulgaris", Color(0xFFE53935), "🔴", listOf(
-        ScanEntry(0, "May 1, 2026", "Severe", 94.3f, "Initial scan — widespread breakout"),
-        ScanEntry(0, "May 5, 2026", "Moderate", 89.2f, "Slight improvement after treatment"),
-        ScanEntry(0, "May 10, 2026", "Mild", 91.5f, "Significant improvement noted"),
+    ConditionTrack("Papular Acne", Color(0xFFE53935), "🔴", listOf(
+        ScanEntry(0, "May 1, 2026", 94.3f, "Initial scan — widespread breakout"),
+        ScanEntry(0, "May 5, 2026", 89.2f, "Slight improvement after treatment"),
+        ScanEntry(0, "May 10, 2026", 91.5f, "Significant improvement noted"),
     )),
-    ConditionTrack("Atopic Dermatitis", Color(0xFFFF9800), "🟠", listOf(
-        ScanEntry(0, "Apr 20, 2026", "Moderate", 87.6f, "Flare-up detected on forearm"),
-        ScanEntry(0, "Apr 28, 2026", "Mild", 85.1f, "Moisturizer routine helping"),
+    ConditionTrack("Eczema", Color(0xFFFF9800), "🟠", listOf(
+        ScanEntry(0, "Apr 20, 2026", 87.6f, "Flare-up detected on forearm"),
+        ScanEntry(0, "Apr 28, 2026", 85.1f, "Moisturizer routine helping"),
     )),
     ConditionTrack("Melasma", Color(0xFF795548), "🟤", listOf(
-        ScanEntry(0, "May 3, 2026", "Mild", 91.2f, "Brown patches on cheeks detected"),
+        ScanEntry(0, "May 3, 2026", 91.2f, "Brown patches on cheeks detected"),
     ))
 )
-
-fun getSeverityLevel(severity: String): Int = when (severity) { "Mild" -> 1; "Moderate" -> 2; "Severe" -> 3; else -> 0 }
-
-fun getTrendText(scans: List<ScanEntry>): String {
-    if (scans.size < 2) return "No trend yet"
-    val last = getSeverityLevel(scans.last().severity)
-    val prev = getSeverityLevel(scans[scans.size - 2].severity)
-    return when { last < prev -> "Improving"; last > prev -> "Worsening"; else -> "Stable" }
-}
-
-fun getTrendColor(scans: List<ScanEntry>): Color {
-    if (scans.size < 2) return Color(0xFF6B7280)
-    val last = getSeverityLevel(scans.last().severity)
-    val prev = getSeverityLevel(scans[scans.size - 2].severity)
-    return when { last < prev -> Color(0xFF16A34A); last > prev -> Color(0xFFDC2626); else -> Color(0xFF6B7280) }
-}
-
-fun getTrendIcon(scans: List<ScanEntry>): androidx.compose.ui.graphics.vector.ImageVector {
-    if (scans.size < 2) return Icons.Default.Remove
-    val last = getSeverityLevel(scans.last().severity)
-    val prev = getSeverityLevel(scans[scans.size - 2].severity)
-    return when { last < prev -> Icons.Default.TrendingUp; last > prev -> Icons.Default.TrendingDown; else -> Icons.Default.Remove }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,7 +89,6 @@ fun ProgressTrackerScreen(navController: NavController) {
                             id = scan.id,
                             date = java.text.SimpleDateFormat("MMM dd, yyyy • h:mm a", java.util.Locale.getDefault())
                                 .format(java.util.Date(scan.scanDate)),
-                            severity = scan.severity,
                             confidence = scan.confidence,
                             notes = scan.notes
                         )
@@ -115,14 +100,10 @@ fun ProgressTrackerScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Progress Tracker", fontWeight = FontWeight.Bold, fontSize = settings.textXl.sp) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Go back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White, titleContentColor = settings.textPrimary)
+            DermaGlassTopBar(
+                title = "Progress Tracker",
+                onBack = { navController.popBackStack() },
+                titleColor = settings.textPrimary
             )
         },
         bottomBar = { DermaBottomNavBar(navController) }
@@ -152,6 +133,10 @@ fun ProgressTrackerScreen(navController: NavController) {
 
             item {
                 Spacer(modifier = Modifier.height(16.dp))
+                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    DiagnosticAidDisclaimer()
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -180,8 +165,10 @@ fun ProgressTrackerScreen(navController: NavController) {
                             .padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("🔍", fontSize = 48.sp)
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(DermaGreenLight), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = DermaGreen, modifier = Modifier.size(34.dp))
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             "No scans yet!",
                             fontSize = settings.textLg.sp,
@@ -211,19 +198,22 @@ fun ProgressTrackerScreen(navController: NavController) {
                 }
             }
 
-            items(conditionTracks) { track ->
-                ConditionTrackCard(
-                    track = track,
-                    onScanAgain = { navController.navigate(Screen.Scan.route) },
-                    onViewGuide = { navController.navigate(Screen.CareGuide.route) },
-                    onDeleteScan = { scanId ->
-                        scope.launch {
-                            db.scanRecordDao().deleteScan(scanId)
-                            refreshKey++
-                        }
+            itemsIndexed(conditionTracks) { index, track ->
+                EntranceAnimation(delayMillis = index * 70) {
+                    Column {
+                        ConditionTrackCard(
+                            track = track,
+                            onScanAgain = { navController.navigate(Screen.Scan.route) },
+                            onDeleteScan = { scanId ->
+                                scope.launch {
+                                    db.scanRecordDao().deleteScan(scanId)
+                                    refreshKey++
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+                }
             }
 
             if (conditionTracks.isNotEmpty()) {
@@ -240,6 +230,7 @@ fun ProgressTrackerScreen(navController: NavController) {
                     }
                 }
             }
+
         }
     }
 }
@@ -258,7 +249,7 @@ fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGuide: () -> Unit, onDeleteScan: (Int) -> Unit) {
+fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onDeleteScan: (Int) -> Unit) {
     var isExpanded by remember { mutableStateOf(true) }
     val settings = LocalAppSettings.current
 
@@ -285,57 +276,57 @@ fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGui
                 Column(modifier = Modifier.weight(1f)) {
                     Text(track.condition, fontSize = settings.textMd.sp, fontWeight = FontWeight.Bold, color = settings.textPrimary)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(getTrendIcon(track.scans), contentDescription = null, tint = getTrendColor(track.scans), modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(getTrendText(track.scans), fontSize = settings.textBase.sp, color = getTrendColor(track.scans), fontWeight = FontWeight.Medium)
-                    }
+                    Text(
+                        "Last scan: ${track.scans.lastOrNull()?.date?.substringBefore(" • ") ?: "--"}",
+                        fontSize = settings.textBase.sp,
+                        color = settings.textSecondary,
+                        maxLines = 1
+                    )
                 }
                 Box(modifier = Modifier.background(track.color.copy(alpha = if (settings.highContrast) 0.2f else 0.1f), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
                     Text("${track.scans.size} scans", fontSize = settings.textSm.sp, color = track.color, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Icon(if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, tint = if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF), modifier = Modifier.size(20.dp))
+                val chevronRotation by animateFloatAsState(if (isExpanded) 0f else 180f, label = "chevronRotation")
+                Icon(
+                    Icons.Default.ExpandLess,
+                    contentDescription = null,
+                    tint = if (settings.highContrast) Color(0xFF444444) else Color(0xFF9CA3AF),
+                    modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = chevronRotation }
+                )
             }
 
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
-                Spacer(modifier = Modifier.height(16.dp))
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(tween(280)) + fadeIn(tween(280)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(180))
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = if (settings.highContrast) Color(0xFFCCCCCC) else Color(0xFFF3F4F6))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                track.scans.forEachIndexed { index, scan ->
-                    TimelineNode(
-                        scan = scan,
-                        isFirst = index == 0,
-                        isLast = index == track.scans.size - 1,
-                        color = track.color,
-                        previousScan = if (index > 0) track.scans[index - 1] else null,
-                        onDelete = { onDeleteScan(scan.id) }
-                    )
-                }
+                    track.scans.forEachIndexed { index, scan ->
+                        TimelineNode(
+                            scan = scan,
+                            isFirst = index == 0,
+                            isLast = index == track.scans.size - 1,
+                            color = track.color,
+                            onDelete = { onDeleteScan(scan.id) }
+                        )
+                    }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onScanAgain,
-                        modifier = Modifier.weight(1f).height(44.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = track.color)
                     ) {
                         Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Scan Again", fontSize = settings.textBase.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    OutlinedButton(
-                        onClick = onViewGuide,
-                        modifier = Modifier.weight(1f).height(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.5.dp, track.color)
-                    ) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = track.color, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Care Guide", fontSize = settings.textBase.sp, color = track.color, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -344,10 +335,7 @@ fun ConditionTrackCard(track: ConditionTrack, onScanAgain: () -> Unit, onViewGui
 }
 
 @Composable
-fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Color, previousScan: ScanEntry?, onDelete: () -> Unit) {
-    val severityColor = getSeverityColor(scan.severity)
-    val improved = previousScan != null && getSeverityLevel(scan.severity) < getSeverityLevel(previousScan.severity)
-    val worsened = previousScan != null && getSeverityLevel(scan.severity) > getSeverityLevel(previousScan.severity)
+fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Color, onDelete: () -> Unit) {
     val settings = LocalAppSettings.current
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -407,17 +395,8 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(scan.date, fontSize = settings.textBase.sp, color = settings.textSecondary, fontWeight = FontWeight.Medium)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (improved) Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("Better", fontSize = settings.textSm.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
-                        } else if (worsened) Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingDown, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("Worse", fontSize = settings.textSm.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
-                        }
-                        Box(modifier = Modifier.background(getSeverityBg(scan.severity), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
-                            Text(scan.severity, fontSize = settings.textSm.sp, color = severityColor, fontWeight = FontWeight.SemiBold)
+                        Box(modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text("%.1f%%".format(scan.confidence), fontSize = settings.textSm.sp, color = color, fontWeight = FontWeight.SemiBold)
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete scan", tint = Color(0xFF9CA3AF), modifier = Modifier.size(16.dp))
@@ -426,7 +405,6 @@ fun TimelineNode(scan: ScanEntry, isFirst: Boolean, isLast: Boolean, color: Colo
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(scan.notes, fontSize = settings.textBase.sp, color = settings.textPrimary, lineHeight = 16.sp)
-                Text("${scan.confidence}% confidence", fontSize = settings.textSm.sp, color = settings.textSecondary)
                 if (isLast) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

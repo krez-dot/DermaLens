@@ -37,3 +37,30 @@ object NotificationScheduler {
         WorkManager.getInstance(context).enqueue(testRequest)
     }
 }
+
+/** Schedules/cancels [ContributionUploadWorker], gated on the same "Contribute to Research"
+ *  consent toggle as the local save step in ScanResultScreen.kt. */
+object ContributionUploadScheduler {
+
+    fun scheduleUpload(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.UNMETERED) // Wi-Fi (or otherwise unmetered) only
+            .build()
+
+        val uploadRequest = PeriodicWorkRequestBuilder<ContributionUploadWorker>(
+            12, TimeUnit.HOURS
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            ContributionUploadWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            uploadRequest
+        )
+    }
+
+    fun cancelUpload(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(ContributionUploadWorker.WORK_NAME)
+    }
+}

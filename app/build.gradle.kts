@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,15 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
 }
+
+// Loaded from the gitignored local.properties so the key never lands in git history.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) load(file.inputStream())
+}
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+val appsScriptUrl: String = localProperties.getProperty("APPS_SCRIPT_URL", "")
+val contributionUploadSecret: String = localProperties.getProperty("CONTRIBUTION_UPLOAD_SECRET", "")
 
 android {
     namespace = "com.dermalens.app"
@@ -18,6 +29,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+        buildConfigField("String", "APPS_SCRIPT_URL", "\"$appsScriptUrl\"")
+        buildConfigField("String", "CONTRIBUTION_UPLOAD_SECRET", "\"$contributionUploadSecret\"")
     }
 
     buildTypes {
@@ -41,6 +57,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     androidResources {

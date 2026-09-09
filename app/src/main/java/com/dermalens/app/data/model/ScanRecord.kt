@@ -14,5 +14,9 @@ data class ScanRecord(
     val notes: String = "",
     val scanDate: Long = System.currentTimeMillis(),
     val imagePath: String = "",
-    val contributedForTraining: Boolean = false
+    val contributedForTraining: Boolean = false,
+    // True once ContributionUploadWorker has successfully uploaded this scan's image to Firebase
+    // Storage -- separate from contributedForTraining (which just means "user consented and the
+    // image was saved locally, pending upload") so the worker knows what's left to do.
+    val uploadedForTraining: Boolean = false
 )

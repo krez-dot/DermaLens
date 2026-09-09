@@ -27,4 +27,12 @@ interface ScanRecordDao {
 
     @Query("SELECT DISTINCT condition FROM scan_records WHERE userId = :userId")
     suspend fun getConditionsByUser(userId: Int): List<String>
+
+    // Scans the user consented to contribute, saved locally, but not yet uploaded to Firebase
+    // Storage -- what ContributionUploadWorker works through on each run.
+    @Query("SELECT * FROM scan_records WHERE contributedForTraining = 1 AND uploadedForTraining = 0 AND imagePath != ''")
+    suspend fun getPendingContributions(): List<ScanRecord>
+
+    @Query("UPDATE scan_records SET uploadedForTraining = 1 WHERE id = :scanId")
+    suspend fun markContributionUploaded(scanId: Int)
 }
