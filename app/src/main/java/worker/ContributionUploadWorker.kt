@@ -67,20 +67,37 @@ class ContributionUploadWorker(
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            instanceFollowRedirects = true
+            // Apps Script Web Apps always answer with a 302 to script.googleusercontent.com
+            // before the real response -- letting HttpURLConnection auto-follow that resends
+            // this POST's body to the redirect target, which Google's serving layer doesn't
+            // accept (confirmed via logcat: an HTML "can't open this file" page, HTTP 404).
+            // Follow it manually as a clean GET instead, same as a browser or curl -L does.
+            instanceFollowRedirects = false
             connectTimeout = 20000
             readTimeout = 30000
             setRequestProperty("Content-Type", "application/json")
             outputStream.use { it.write(body.toString().toByteArray()) }
         }
 
-        if (conn.responseCode !in 200..299) {
-            val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: "(no error body)"
-            android.util.Log.e("DermaLens", "Contribution upload failed: HTTP ${conn.responseCode} -- $errorBody")
+        val finalConn = if (conn.responseCode in 300..399) {
+            val redirectUrl = conn.getHeaderField("Location")
+                ?: return false.also { android.util.Log.e("DermaLens", "Contribution upload redirect had no Location header") }
+            (URL(redirectUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 20000
+                readTimeout = 30000
+            }
+        } else {
+            conn
+        }
+
+        if (finalConn.responseCode !in 200..299) {
+            val errorBody = finalConn.errorStream?.bufferedReader()?.readText() ?: "(no error body)"
+            android.util.Log.e("DermaLens", "Contribution upload failed: HTTP ${finalConn.responseCode} -- $errorBody")
             return false
         }
 
-        val response = JSONObject(conn.inputStream.bufferedReader().readText())
+        val response = JSONObject(finalConn.inputStream.bufferedReader().readText())
         if (response.optString("status") != "ok") {
             android.util.Log.e("DermaLens", "Contribution upload rejected: ${response.optString("message")}")
             return false

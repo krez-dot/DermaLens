@@ -2,7 +2,6 @@ package com.dermalens.app.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import androidx.compose.ui.graphics.Color
@@ -18,31 +17,39 @@ import java.nio.channels.FileChannel
 
 private const val MODEL_FILE_NAME = "best.tflite"
 
-// The real 6-class merged model (training/merge_and_train_multiclass.ipynb). Order matches the
-// notebook's CONDITIONS list exactly -- that's what the class indices were trained against.
-// Overall mAP50 0.557; per-class: Acne Vulgaris 0.557, Eczema 0.643, Melasma 0.602, Tinea 0.525,
-// Warts 0.641, Scabies 0.360 (weakest -- recall issue per the confusion matrix, not confused with
-// another class, just often missed; likely loose/inconsistent box annotations on that dataset).
-// Solo-verified separately: a yolo11m Melasma-only run scored 0.696 mAP50 (up from 0.602 on
-// yolo11s) and correctly identified a real photo at 52.1% confidence -- see retrain_yolo.ipynb.
-// Not yet folded into this merged model.
-private val CLASS_LABELS = listOf("Acne Vulgaris", "Eczema", "Melasma", "Tinea", "Warts", "Scabies")
+// RESET (fresh training start, 2026-09-11): no model is currently bundled -- app/src/main/assets/
+// best.tflite was removed along with all local training run data, to redo data verification and
+// training from scratch. loadModelFile() returns null when the asset is missing, and
+// runYoloInference() returns null immediately after that (before CLASS_LABELS is ever read), so an
+// empty list here is safe -- but fill this back in with the real class order the next model was
+// trained against (matching the training notebook's CONDITIONS list exactly) once one exists,
+// or every result will be silently mislabeled.
+private val CLASS_LABELS = emptyList<String>()
 
 private val conditionTemplates: Map<String, DetectionResult> by lazy {
     mockDetectionResults.associateBy { it.condition }
 }
 
-// Below this overall confidence, the model isn't committing to a real answer -- rather than show
-// a confident-looking percentage for a weak/ambiguous guess, anything below this floor is
-// reported honestly as "no clear condition" instead. Set from the merged model's own
-// BoxF1_curve.png (dermalens_multiclass_run): F1 across all classes peaks at 0.55 at confidence
-// 0.322 -- this is that real F1-optimal cutoff, not a guess. Re-derive from the new run's
-// BoxF1_curve.png any time the model is retrained, since the optimal point shifts with it.
-private const val MIN_CONFIDENCE_PERCENT = 32f
+/**
+ * The one confidence floor for this model, taken from its own F1-Confidence curve.
+ *
+ * RESET (fresh training start, 2026-09-11): no model is bundled right now, so this placeholder
+ * value means nothing yet -- do not carry over a number from a deleted model. Once a new model is
+ * trained, read its own BoxF1_curve.png ("all classes X at Y") and set this to Y. Every model needs
+ * its own check here; the right floor is not a fixed constant across different models or datasets.
+ *
+ * This deliberately drives BOTH the per-box candidate filter and the "is the verdict good enough
+ * to show" gate, on purpose -- keeping those as two separate constants previously let a scan clear
+ * the verdict gate while every one of its boxes got filtered out separately, so the app would name
+ * a condition and draw nothing. Keep them unified when this gets filled back in.
+ */
+private const val CONFIDENCE_THRESHOLD = 0.25f // placeholder only -- re-derive from the next model's own F1 curve
+
+private const val MIN_CONFIDENCE_PERCENT = CONFIDENCE_THRESHOLD * 100f
 
 // Below this, a class's score is treated as noise rather than a plausible differential -- with
-// only 40% (MIN_CONFIDENCE_PERCENT above) needed to commit to the primary result, a much lower
-// floor here still filters out the long tail of near-zero scores every untrained class gets.
+// only CONFIDENCE_THRESHOLD needed to commit to the primary result, a much lower floor here
+// still filters out the long tail of near-zero scores every untrained class gets.
 private const val MIN_DIFFERENTIAL_PERCENT = 15f
 private const val MAX_DIFFERENTIALS = 2
 
@@ -95,7 +102,8 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
             val values = FloatArray(outputSize)
             outputBuffer.asFloatBuffer().get(values)
 
-            val (classIndex, confidence, boxes, classScores) = bestClass(values, outputShape, inputWidth, inputHeight)
+            val (classIndex, confidence, boxes, classScores) =
+                bestClass(values, outputShape, inputWidth, inputHeight) ?: return null
             val confidencePercent = (confidence * 100f).coerceIn(0f, 100f)
             Log.d("DermaLens", "YOLO result classIndex=$classIndex confidence=$confidence boxes=$boxes")
             if (confidencePercent < MIN_CONFIDENCE_PERCENT) {
@@ -118,11 +126,36 @@ fun runYoloInference(context: Context, imageUri: String): DetectionResult? {
 
             template.copy(confidence = confidencePercent, boundingBoxes = boxes, differentials = differentials)
         }
-    } catch (e: Exception) {
-        Log.e("DermaLens", "YOLO inference failed", e)
+    } catch (t: Throwable) {
+        // Throwable rather than Exception: OutOfMemoryError from a large decode or a big tensor
+        // allocation is an Error, and would otherwise sail past this handler and crash the app.
+        Log.e("DermaLens", "YOLO inference failed", t)
         null
     }
 }
+
+/**
+ * Shown when inference couldn't run at all -- no bundled model, an unreadable photo, a
+ * model/label mismatch, a TFLite failure.
+ *
+ * This exists because the call site used to fall back to `mockDetectionResults.random()`, which
+ * meant any of those failures presented the user with a randomly chosen skin condition and a
+ * plausible-looking confidence number. For a diagnostic app that's the worst available failure
+ * mode -- an honest error is the only acceptable one.
+ */
+fun analysisFailedResult() = DetectionResult(
+    condition = "Analysis Unavailable",
+    confidence = 0f,
+    severity = "Unknown",
+    description = "The scan couldn't be analyzed on this device. This is a problem with the app rather than with your photo, so retaking it probably won't help.",
+    symptoms = listOf(
+        "Try closing and reopening the app",
+        "If it keeps happening, report it with the date and time of the scan"
+    ),
+    recommendation = "No result was produced, so nothing here should be read as a diagnosis. For any skin concern you're worried about, consult a licensed dermatologist.",
+    color = Color(0xFF6B7280),
+    isLowConfidence = true
+)
 
 private fun loadModelFile(context: Context): ByteBuffer? {
     Log.d("DermaLens", "YOLO looking for asset: $MODEL_FILE_NAME, assets list=${context.assets.list("")?.toList()}")
@@ -137,13 +170,10 @@ private fun loadModelFile(context: Context): ByteBuffer? {
     }
 }
 
-private fun loadBitmap(context: Context, imageUri: String): Bitmap? {
-    return try {
-        context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { BitmapFactory.decodeStream(it) }
-    } catch (e: Exception) {
-        null
-    }
-}
+// EXIF-aware and downsampled -- a raw BitmapFactory.decodeStream here fed the model sideways
+// photos, since CameraX saves JPEGs in sensor orientation with a rotate tag. See ImageLoading.kt.
+private fun loadBitmap(context: Context, imageUri: String): Bitmap? =
+    decodeUprightBitmap(context, Uri.parse(imageUri))
 
 private fun preprocess(bitmap: Bitmap, width: Int, height: Int, channelsFirst: Boolean): ByteBuffer {
     // Stretch-to-square, not letterboxed: tested both against this model and confidence was
@@ -174,7 +204,6 @@ private fun preprocess(bitmap: Bitmap, width: Int, height: Int, channelsFirst: B
     return buffer
 }
 
-private const val BOX_CONFIDENCE_THRESHOLD = 0.25f // Ultralytics' standard candidate-box cutoff
 private const val NMS_IOU_THRESHOLD = 0.45f // Ultralytics' standard NMS overlap cutoff
 
 /** [classScores] holds every class's own confidence (not just the winner's), so callers can
@@ -198,7 +227,7 @@ private data class ClassificationResult(
  *    non-max suppression collapses duplicate/overlapping detections of the same region while
  *    keeping genuinely separate ones (e.g. left cheek and right cheek).
  */
-private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inputHeight: Int): ClassificationResult {
+private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inputHeight: Int): ClassificationResult? {
     if (shape.size == 2) {
         var bestIdx = 0
         var bestVal = values[0]
@@ -208,11 +237,30 @@ private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inpu
         return ClassificationResult(bestIdx, bestVal, emptyList(), values.copyOf())
     }
 
-    val numClasses = CLASS_LABELS.size
     val dims = shape.drop(1) // drop batch dimension
-    val channelsFirst = dims.getOrNull(0) == numClasses + 4
-    val numChannels = if (channelsFirst) dims[0] else dims.getOrElse(1) { numClasses + 4 }
+
+    // Which dim is which is decided by SIZE, not by matching against CLASS_LABELS.size. A YOLO
+    // head emits 4+numClasses channels (5 for one class, 10 for six) against thousands of
+    // candidate boxes (8400 at 640px), so the smaller dim is always the channel dim. Keying off
+    // CLASS_LABELS.size instead -- as this did -- meant that swapping best.tflite without also
+    // editing CLASS_LABELS flipped the layout guess, and the tensor got read transposed: garbage
+    // confidences, no exception, nothing in the log. Given how often the model is being swapped
+    // right now, that's a landmine worth removing.
+    val channelsFirst = dims[0] <= dims.getOrElse(1) { dims[0] }
+    val numChannels = if (channelsFirst) dims[0] else dims.getOrElse(1) { dims[0] }
     val numBoxes = if (channelsFirst) dims.getOrElse(1) { 1 } else dims[0]
+    val numClasses = numChannels - 4
+
+    // Fail loudly instead of scoring nonsense: if the bundled model's class count doesn't match
+    // CLASS_LABELS, every label lookup below would be off by however far they disagree.
+    if (numClasses != CLASS_LABELS.size) {
+        Log.e(
+            "DermaLens",
+            "Model/label mismatch: $MODEL_FILE_NAME outputs $numClasses classes but CLASS_LABELS " +
+                "has ${CLASS_LABELS.size} (${CLASS_LABELS.joinToString()}). Refusing to guess."
+        )
+        return null
+    }
 
     fun valueAt(channel: Int, box: Int): Float {
         val idx = if (channelsFirst) channel * numBoxes + box else box * numChannels + channel
@@ -256,7 +304,7 @@ private fun bestClass(values: FloatArray, shape: IntArray, inputWidth: Int, inpu
 
     val candidates = (0 until numBoxes)
         .map { box -> box to valueAt(4 + bestIdx, box) }
-        .filter { (_, score) -> score >= BOX_CONFIDENCE_THRESHOLD }
+        .filter { (_, score) -> score >= CONFIDENCE_THRESHOLD }
         .sortedByDescending { (_, score) -> score }
         .map { (box, score) -> toNormalizedBox(box) to score }
 

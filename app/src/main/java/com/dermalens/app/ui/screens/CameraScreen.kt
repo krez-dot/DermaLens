@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.util.Log
+import android.util.Rational
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.dermalens.app.ml.decodeUprightBitmap
 import com.dermalens.app.navigation.Screen
 import java.util.concurrent.Executors
 import androidx.compose.foundation.BorderStroke
@@ -76,7 +78,11 @@ private fun cropGalleryImageToFrame(
     userOffsetY: Float
 ): android.net.Uri? {
     return try {
-        val bitmap = context.contentResolver.openInputStream(sourceUri)?.use { BitmapFactory.decodeStream(it) } ?: return null
+        // decodeUprightBitmap, not a bare BitmapFactory decode: the preview below is drawn by
+        // Coil, which applies EXIF orientation. Decoding without it here meant this function
+        // inverted the display matrix against pixels rotated 90 degrees from the ones the user
+        // was actually looking at, so the crop landed on the wrong part of the photo entirely.
+        val bitmap = decodeUprightBitmap(context, sourceUri) ?: return null
         val bitmapW = bitmap.width.toFloat()
         val bitmapH = bitmap.height.toFloat()
 
@@ -111,14 +117,62 @@ private fun cropGalleryImageToFrame(
         val cropW = (right - left).coerceAtLeast(1)
         val cropH = (bottom - top).coerceAtLeast(1)
 
-        val cropped = Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
-        val file = java.io.File(context.cacheDir, "scan_crop_${System.currentTimeMillis()}.jpg")
-        java.io.FileOutputStream(file).use { out -> cropped.compress(Bitmap.CompressFormat.JPEG, 92, out) }
-        android.net.Uri.fromFile(file)
+        writeCropToCache(context, Bitmap.createBitmap(bitmap, left, top, cropW, cropH))
     } catch (e: Exception) {
         Log.e("DermaLens", "Gallery image crop failed", e)
         null
     }
+}
+
+/**
+ * Crops a freshly captured camera photo down to just what was inside the guide box.
+ *
+ * Without this the guide box was decorative on the camera path: the gallery path cropped to the
+ * frame but `capturePhoto` handed the full-frame JPEG straight to the result screen. The guide
+ * box is a 260.dp square on a full-screen preview, so it covers roughly a fifth of the frame's
+ * area -- meaning the model was being shown a lesion at about 2.3x smaller linear scale than
+ * anything in the training set, which is all lesion-filling crops. That alone is enough to sink
+ * confidence on a model that validates fine, and it also made camera and gallery scans of the
+ * same skin disagree.
+ *
+ * Assumes the captured image covers the same field of view as the preview, which is what the
+ * [ViewPort] set in `startCamera` guarantees -- PreviewView's default FILL_CENTER scale type
+ * otherwise shows less than the sensor captures, and these fractions would crop a wider region
+ * than the user framed.
+ */
+private fun cropCameraImageToFrame(
+    context: android.content.Context,
+    sourceUri: android.net.Uri,
+    containerWidthPx: Float,
+    containerHeightPx: Float,
+    guideBoxSizePx: Float
+): android.net.Uri? {
+    return try {
+        if (containerWidthPx <= 0f || containerHeightPx <= 0f) return null
+        val bitmap = decodeUprightBitmap(context, sourceUri) ?: return null
+
+        // The guide box is centered, so express it as a fraction of the container and apply the
+        // same fraction to the image -- no dependence on the capture's absolute resolution.
+        val halfFractionX = (guideBoxSizePx / 2f) / containerWidthPx
+        val halfFractionY = (guideBoxSizePx / 2f) / containerHeightPx
+
+        val left = ((0.5f - halfFractionX) * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+        val top = ((0.5f - halfFractionY) * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+        val right = ((0.5f + halfFractionX) * bitmap.width).toInt().coerceIn(left + 1, bitmap.width)
+        val bottom = ((0.5f + halfFractionY) * bitmap.height).toInt().coerceIn(top + 1, bitmap.height)
+
+        writeCropToCache(context, Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top))
+    } catch (e: Exception) {
+        Log.e("DermaLens", "Camera image crop failed", e)
+        null
+    }
+}
+
+/** Saves a cropped bitmap as a JPEG in the cache dir and returns its file:// Uri. */
+private fun writeCropToCache(context: android.content.Context, cropped: Bitmap): android.net.Uri {
+    val file = java.io.File(context.cacheDir, "scan_crop_${System.currentTimeMillis()}.jpg")
+    java.io.FileOutputStream(file).use { out -> cropped.compress(Bitmap.CompressFormat.JPEG, 92, out) }
+    return android.net.Uri.fromFile(file)
 }
 
 @Composable
@@ -199,7 +253,7 @@ fun CameraPreviewScreen(navController: NavController) {
     }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-    fun startCamera(frontCamera: Boolean = false) {
+    fun startCamera(frontCamera: Boolean = false, viewSize: IntSize = IntSize.Zero) {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
@@ -210,13 +264,35 @@ fun CameraPreviewScreen(navController: NavController) {
             val cameraSelector = if (frontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             try {
                 cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, capture)
+                // Bind preview and capture as a group with a ViewPort matching the preview's
+                // aspect ratio and scale type, so the saved JPEG covers the same field of view
+                // the user is looking at. That's what lets cropCameraImageToFrame map the guide
+                // box across by simple proportion. Without it, PreviewView's default FILL_CENTER
+                // crops the preview while the capture keeps the wider sensor FOV, and the two
+                // silently disagree about what "inside the frame" means.
+                val useCaseGroup = UseCaseGroup.Builder()
+                    .also { group ->
+                        if (viewSize.width > 0 && viewSize.height > 0) {
+                            group.setViewPort(
+                                ViewPort.Builder(
+                                    Rational(viewSize.width, viewSize.height),
+                                    capture.targetRotation
+                                ).setScaleType(ViewPort.FILL_CENTER).build()
+                            )
+                        }
+                    }
+                    .addUseCase(preview)
+                    .addUseCase(capture)
+                    .build()
+                camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, useCaseGroup)
                 imageCapture = capture
             } catch (e: Exception) { Log.e("DermaLens", "Camera binding failed", e) }
         }, ContextCompat.getMainExecutor(context))
     }
 
-    LaunchedEffect(isFrontCamera) { startCamera(isFrontCamera) }
+    // Rebinds once the preview's real size is known (containerSizePx starts Zero and is filled in
+    // by onSizeChanged), since the ViewPort above needs it to match the capture FOV to the preview.
+    LaunchedEffect(isFrontCamera, containerSizePx) { startCamera(isFrontCamera, containerSizePx) }
 
     val scope = rememberCoroutineScope()
 
@@ -399,8 +475,23 @@ fun CameraPreviewScreen(navController: NavController) {
                                     capturePhoto(
                                         capture,
                                         onCaptured = { uri ->
-                                            isScanning = false
-                                            navController.navigate(Screen.ScanResult.createRoute(uri.toString()))
+                                            // Crop to the guide box before analyzing, matching the
+                                            // gallery path -- the model is trained on lesion-filling
+                                            // crops, not whole frames.
+                                            scope.launch {
+                                                val croppedUri = withContext(Dispatchers.IO) {
+                                                    cropCameraImageToFrame(
+                                                        context, uri,
+                                                        containerSizePx.width.toFloat(),
+                                                        containerSizePx.height.toFloat(),
+                                                        guideBoxSizePx
+                                                    )
+                                                }
+                                                isScanning = false
+                                                navController.navigate(
+                                                    Screen.ScanResult.createRoute((croppedUri ?: uri).toString())
+                                                )
+                                            }
                                         },
                                         onFailed = { isScanning = false }
                                     )

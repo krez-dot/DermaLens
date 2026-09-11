@@ -25,6 +25,9 @@ sealed class Screen(val route: String) {
             if (imageUri != null) "scan_result?imageUri=${android.net.Uri.encode(imageUri)}" else "scan_result"
     }
     object ProgressTracker : Screen("progress_tracker")
+    object FamilyTree : Screen("family_tree/{condition}") {
+        fun createRoute(condition: String) = "family_tree/${android.net.Uri.encode(condition)}"
+    }
     object ClinicLocator : Screen("clinic_locator")
     object Profile : Screen("profile")
     object EditProfile : Screen("edit_profile")
@@ -81,6 +84,15 @@ fun DermaLensNavGraph(
         }
         composable(Screen.ProgressTracker.route) {
             ProgressTrackerScreen(navController = navController)
+        }
+        composable(
+            Screen.FamilyTree.route,
+            arguments = listOf(navArgument("condition") { type = NavType.StringType })
+        ) { backStackEntry ->
+            FamilyTreeScreen(
+                navController = navController,
+                condition = backStackEntry.arguments?.getString("condition") ?: ""
+            )
         }
         composable(Screen.ClinicLocator.route) {
             ClinicLocatorScreen(navController = navController)

@@ -63,4 +63,22 @@ object ContributionUploadScheduler {
     fun cancelUpload(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(ContributionUploadWorker.WORK_NAME)
     }
+
+    /** Fires a one-time upload attempt right away, on top of the 12h periodic job above. Still
+     *  Wi-Fi-only -- this doesn't relax the "never eats mobile data" promise, it just means a
+     *  scan saved while already on Wi-Fi doesn't sit around for up to 12h before going out. If
+     *  Wi-Fi isn't available yet, WorkManager holds this until it is, same as the periodic job
+     *  would. Safe to call every time a scan is saved with consent -- if nothing's pending by the
+     *  time this runs (e.g. the periodic job already grabbed it), the worker just no-ops. */
+    fun triggerImmediateUpload(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .build()
+
+        WorkManager.getInstance(context).enqueue(
+            OneTimeWorkRequestBuilder<ContributionUploadWorker>()
+                .setConstraints(constraints)
+                .build()
+        )
+    }
 }

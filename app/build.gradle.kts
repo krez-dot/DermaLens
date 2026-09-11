@@ -89,6 +89,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.2")
     implementation("androidx.camera:camera-view:1.3.2")
 
+    // Declared explicitly rather than leaned on as a camera-core transitive: every bitmap we
+    // decode has to honour EXIF orientation or the model sees sideways photos (see ImageLoading.kt).
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // ── TensorFlow Lite ───────────────────────────────────────────────────
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")

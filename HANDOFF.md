@@ -1,8 +1,8 @@
 # DermaLens — Developer Handoff
 
-Last updated: 2026-08-28
+Last updated: 2026-09-10
 Branch: `master` (all work committed and pushed, working tree clean)
-Status: Firebase Auth live. Three of six target conditions have real trained/verified single-class models (Melasma, Atopic Dermatitis, Warts) — swapped in one at a time, not simultaneously. Multi-class merge still pending.
+Status: Firebase Auth live. **Multi-class merge is done** — a real 6-class YOLOv11 model (overall mAP50 0.557) is trained, bundled, and live-verified on-device. Contribute to Research now actually uploads to Google Drive. Clinic Locator moved from OSM/Overpass to Google Maps + Places.
 
 ---
 
@@ -12,77 +12,112 @@ Status: Firebase Auth live. Three of six target conditions have real trained/ver
 - **adb** is at `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`, **emulator** at `$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe`. AVD name: `DermaLensTest`. The emulator is not always running — check `adb devices` first, boot with `emulator.exe -avd DermaLensTest -WindowStyle Hidden` if empty, and poll `adb devices` until it shows `device` (takes 20-40s).
 - **Git Bash mangles device-absolute paths** starting with `/sdcard/...` — double the leading slash (`//sdcard/...`) when passing paths to `adb push`/`pull`/`shell` through the Bash tool, or just use PowerShell for adb calls instead.
 - **The Android system Photo Picker gets cluttered** by every screenshot taken during testing (they get indexed into the same "Recent" media view). Periodically `adb shell rm -f /sdcard/*.png` + `am force-stop com.android.providers.media.module` to reset it if the picker gets hard to navigate.
+- **Windows Gradle builds can hit a file lock on `R.jar`** — VS Code's Kotlin/Java language server respawns `java.exe` almost immediately after being killed. Loop-kill java processes a few times with short sleeps between each, then retry the build immediately.
 - Full team onboarding steps (Android Studio, `google-services.json`) are in `SETUP.md`.
 
 ---
 
-## Auth — Now Firebase, Not Local
-
-This changed substantially since the original local-hash implementation:
+## Auth — Firebase, Not Local
 
 - **Firebase Authentication** (email/password) — real accounts, real email verification, real password reset, visible in the Firebase Console. See `FIREBASE_AUTH_PLAN.md` for the full rationale and manuscript impact (Scope & Limitations, IC1/IC2/SS1/SS3, Table 4, Figure 3).
-- **Guest mode was added, then removed** (2026-08-24 → 2026-08-25) per the team's tech adviser. Registration is now required — no offline/no-account path. See "Guest Mode — Removed" in `FIREBASE_AUTH_PLAN.md`.
+- **Guest mode was added, then removed** (2026-08-24 → 2026-08-25) per the team's tech adviser. Registration is required — no offline/no-account path. See "Guest Mode — Removed" in `FIREBASE_AUTH_PLAN.md`.
 - **Email verification is enforced**, not just sent — an unverified account is routed to a "Verify Your Email" screen instead of Home, on both fresh Register and every subsequent Login, until Firebase reports `isEmailVerified == true`. See `VerifyEmailScreen` in `Screens.kt`.
-- Password reset ("Forgot password?") **has been live-tested end-to-end** with a real inbox (not just implemented) — confirmed working.
+- Password reset ("Forgot password?") has been live-tested end-to-end with a real inbox — confirmed working.
 - Email *change* is still NOT implemented — Edit Profile's email field is read-only. Needs Firebase's `verifyBeforeUpdateEmail()` flow. Open item, see README "Good First Issues."
+- **A real bug was found and fixed this pass**: if a Room schema bump wipes the `users` table while `SharedPreferences` still reports a logged-in session (exactly what happens on a dev-stage `fallbackToDestructiveMigration()` DB bump), "Save to History" on the Scan Result screen would look up a profile row that no longer existed and silently do nothing — no error, button just looked unresponsive. `ScanResultScreen.kt` now self-heals by recreating the minimal profile row, same as Login already did for fresh installs.
 
 ---
 
-## YOLOv11 — Three Conditions Trained & Verified, Swap-One-At-A-Time Workflow
+## YOLOv11 — 6-Class Merged Model, Trained and Bundled
 
-**Important: only one `.tflite` model is bundled at a time.** `app/src/main/assets/best.tflite` gets overwritten each time a new condition's model is swapped in, and `CLASS_LABELS` in `ml/YoloDetector.kt` must be updated to match. There is no multi-class model yet — each condition was trained and verified independently.
+**The swap-one-at-a-time workflow is over.** `app/src/main/assets/best.tflite` (gitignored) is now the real 6-class merged model, and `CLASS_LABELS` in `ml/YoloDetector.kt` is `listOf("Acne Vulgaris", "Eczema", "Melasma", "Tinea", "Warts", "Scabies")` — order matches the training notebook's `CONDITIONS` list exactly, which is what the class indices were trained against. Changing the order without retraining silently mislabels everything.
 
-**Currently bundled: Warts** (`CLASS_LABELS = listOf("Warts")`).
+### Per-class results (overall mAP50 0.557)
 
-### Conditions trained and live-verified so far (via real app flow, real photos, not synthetic tests)
-1. **Melasma** — verified ~68-78% confidence range across multiple real photos, correct multi-region bounding boxes (bilateral detection)
-2. **Atopic Dermatitis** (Roboflow project named "eczema" — app's canonical name is "Atopic Dermatitis", matches `mockDetectionResults`/Care Guide; **must** set `CLASS_LABELS = listOf("Atopic Dermatitis")`, not `"Eczema"`, or `conditionTemplates[label]` lookup silently returns null) — verified 39.6% (below floor, correctly rejected) on a subtle photo, 59.0% (correctly identified) on a clearer one. Training log showed mAP50=0.480, P=0.554, R=0.456 — moderate accuracy, plateaued early (see below).
-3. **Warts** — verified 70.8% (single wart cluster) and 64.8% (multiple wart clusters across 3 fingers, 4 boxes drawn correctly) on two different real photos.
+| Condition | AP50 | Note |
+|---|---|---|
+| Eczema | 0.643 | Cleaned-up dataset (`eczema-fixed`) — see below |
+| Warts | 0.641 | |
+| Melasma | 0.602 | Small dataset (255 source images) but well-annotated; `yolo11m` solo run hit 0.696 on the same data — capacity was the bottleneck here, not quality |
+| Acne Vulgaris | 0.557 | Real, repeatable confusion with Melasma on clean photos — post-inflammatory hyperpigmentation from healed acne genuinely resembles melasma's brown patches |
+| Tinea | 0.525 | Never annotation-audited yet |
+| **Scabies** | **0.360** | Weakest by a wide margin — see below |
 
-### Remaining conditions to train (of the app's 6-condition set)
-- **Acne Vulgaris**
-- **Tinea**
-- **Scabies**
+### The confidence floor is now derived, not guessed
+`MIN_CONFIDENCE_PERCENT = 32f` in `YoloDetector.kt`, taken from the trained model's own `BoxF1_curve.png` (F1 peaks at 0.55 at confidence 0.322) — not the old arbitrary 40%. Re-derive this from the new run's F1 curve any time the model is retrained; the optimal point shifts with it.
+
+### Scabies is a genuine annotation-quality problem, diagnosed and quantified
+The confusion matrix showed Scabies isn't confused with other conditions at all — it's simply **missed** (62% predicted as background). Rendering the actual training boxes found the cause: **34% of source images (114 of 334) have a single whole-image box covering 90-100% of the frame** over photos that visibly contain 6-15 discrete lesions, contradicting the other 66% that are correctly boxed per-lesion (tight, 2-5% of image area each). The model can't learn a coherent "what does one lesion look like" concept from two contradictory lessons at once. The full list of 114 affected image numbers (worst-first) is not yet committed anywhere — ask Mark Joseph if picking this up, or re-derive it by downloading `scabies-erb5y` and measuring box-area-as-%-of-image per file. Re-annotating these is the single highest-leverage remaining improvement.
+
+### Two dataset preprocessing bugs found and fixed (relevant for any future dataset swap)
+Melasma (`dermalens-yolov11`) and Scabies (`scabies-erb5y`) were both exported from Roboflow with **"Fit within" (letterbox) resize** while every other condition used **"Stretch to"** — mismatched geometry between classes in one merged dataset, and it's silent unless you check each dataset version's preprocessing settings via the Roboflow API before training. Fixing both moved Scabies 0.297 → 0.360 and Melasma 0.572 → 0.602 in isolation, before the annotation-quality issue above was even found.
+
+### Model capacity is a real, measured lever — not yet applied to the full merge
+A solo `yolo11m` (medium) run on Melasma's exact same data scored **0.696 mAP50** vs. 0.602 for `yolo11s` on identical data, and was live-verified correctly identifying a real photo. The full 6-class merge hasn't been retrained on `yolo11m` yet — that's an open next step, and it's unknown whether the capacity boost helps the other 5 classes as much as it helped Melasma.
+
+### Acne subtype differentiation — tried, not ready, documented for later
+A standalone 5-class model (blackhead/whitehead/papula/pustula/nodules, sourced by splitting one multi-class Roboflow project via `source_class` in the merge notebook) scored only **0.234 mAP50**, with blackhead — despite having by far the most training data (2,588 of ~3,457 instances) — sitting at **1.5% recall**. That's not a data-volume problem; blackheads are small, numerous, low-contrast dots, which is a genuinely hard small-object-detection case distinct from a single larger lesion. Papula alone scored a usable 0.481, proving the concept can work for some subtypes. Full writeup and the exact dataset details: `training/acne_subtypes_future/README.md`. Not folded into the bundled model.
 
 ### Real bugs found and fixed along the way (all committed, all live-tested)
-- **No confidence floor existed.** A single-class model has no way to say "not skin" / "no condition" — it will confidently label a photo of a wall or wood grain with *some* score for its one class, because that's the only answer it can give. Fixed: `MIN_CONFIDENCE_PERCENT = 40f` in `YoloDetector.kt` — below this, the app returns a `lowConfidenceResult()` ("No Clear Condition Detected") instead of a fabricated diagnosis. Verified live with an unrelated billboard photo → correctly shows "No Clear Condition Detected," not a false label.
-- **Severity badge was fabricated.** The "Mild/Moderate/Severe" badge on the Scan Result screen was mock data, never something the model actually predicted — removed from that screen's display (`DetectionResult.severity` and the badge UI are still used by Progress Tracker's improving/worsening/stable trend feature, which is real and was deliberately left alone — only the misleading display on the result screen itself was removed).
-- Same two preprocessing gotchas as before still apply: **channels-first vs. channels-last auto-detection**, and **stretch-resize (not letterboxed) preprocessing** — see the code comments in `YoloDetector.kt`'s `preprocess()` and `bestClass()`.
+- **No confidence floor existed** (fixed long before this pass, still relevant context): a model has no way to say "not skin" without one — see `MIN_CONFIDENCE_PERCENT` above for the current, derived value.
+- **Severity badge was fabricated on the result screen** — removed from that display; `DetectionResult.severity` is still real and used by Progress Tracker's trend feature.
+- **Channels-first vs. channels-last auto-detection**, and **stretch-resize (not letterboxed) preprocessing** — `YoloDetector.kt`'s `preprocess()` and `bestClass()` handle both automatically; see the code comments there.
+- **Don't over-zoom when scanning** — cropping tightly onto a single lesion measurably *lowered* confidence on the same photo (28.6% → 17.4%), because the training images are framed with the lesion in surrounding skin context, not filling the frame edge to edge. Worth surfacing as in-app guidance if not already (check `HomeScreen.kt`'s "Tip of the Day" rotation).
 
 ### Confidence threshold (`BOX_CONFIDENCE_THRESHOLD = 0.25`, box-drawing only, doesn't affect the % shown)
-A real experiment (not guessed) was run sweeping this value against one real inference pass — see `THRESHOLD_EXPERIMENT.md` for full methodology and results. Conclusion: keep 0.25, it sits safely below the point where real detections start getting dropped (~0.40).
-
-### Training data quality issue found (relevant for future training runs)
-Reviewed the actual training log for the Atopic Dermatitis run (79 epochs, early-stopped, mAP50 plateaued around 0.48 without smooth improvement — that pattern points to label/annotation inconsistency, not insufficient epochs). Two concrete causes were visually confirmed in the Roboflow project:
-1. **Junk classes from mislabeling** — the Roboflow project has stray classes (`0`, `b`, `bb`, `bjnn`) alongside the real `Eczema` class, almost certainly typos during labeling that created new classes instead of using the existing one. Boxes under these never contribute to the real class's training.
-2. **Inconsistent box tightness / wrong annotation tool** — some images were boxed edge-to-edge (whole image, uninformative), and at least 4 instances were annotated with the **Polygon** tool instead of **Bounding Box**, which Ultralytics silently drops entirely for a detection-format dataset (confirmed via the training log's `len(segments)=4, len(boxes)=768` warning).
-
-**Recommendation for future training runs (any condition):** before training, check the Roboflow project's Classes panel for stray/junk classes and merge or delete them, and spot-check that all annotations use the Bounding Box tool with reasonably tight boxes around just the affected skin — not the whole image.
+Unchanged since the original experiment — see `THRESHOLD_EXPERIMENT.md` for full methodology. Still 0.25.
 
 ---
 
-## What's Done (unchanged from before, still accurate)
+## Contribute to Research — Now Actually Uploads
+
+Previously scans were only saved locally with a `contributedForTraining` flag and nothing happened after that. Now:
+
+1. User opts in (Profile toggle, or the first-run Home prompt).
+2. On Save to History, if consented, the image is copied into app-private storage and flagged.
+3. `ContributionUploadWorker` (WorkManager, `NetworkType.UNMETERED`, ~12h period) POSTs pending images to a **Google Apps Script Web App** (`apps-script/ContributionUpload.gs`), which files each into `DermaLens Contributions/<condition>/` in the script owner's own Google Drive. The row then gets `uploadedForTraining = true` so it can't repeat.
+
+**Why Apps Script, not Firebase Storage:** Firebase/Cloud Storage now requires the Blaze billing plan — the Spark free tier no longer includes Storage at all — and Google Cloud additionally wanted a one-time $10 prepayment that wasn't available. Apps Script runs under the owner's own Google account with zero billing, and critically means no real credential ships in the APK, only a low-value shared secret.
+
+**Anonymity is structural, not just promised**: the upload request contains only image bytes, a random-UUID filename, and the detected condition — no user ID, email, or device identifier anywhere. Images land in one shared per-condition folder tree, deliberately not per-user, since there's no identifier to key a per-user folder on anyway.
+
+**Setup** (one-time, whoever owns the receiving Drive): deploy the `.gs` file as a Web App (Execute as: Me, access: Anyone — **must** be "Web app" type, not "Library", a real mistake that cost real debugging time), set `SHARED_SECRET` in Script Properties, put the resulting `/exec` URL and the same secret into `local.properties` as `APPS_SCRIPT_URL` / `CONTRIBUTION_UPLOAD_SECRET`. If `APPS_SCRIPT_URL` is blank the worker no-ops cleanly, so the app builds fine without any of this configured.
+
+**Testing this end-to-end is not obvious**: `adb shell cmd jobscheduler run -f` is unreliable for a `NetworkType.UNMETERED`-constrained job — it bypasses timing/idle constraints but not connectivity checks, and produced zero logcat output both times it was tried. What actually works: temporarily add a `OneTimeWorkRequestBuilder<ContributionUploadWorker>()` trigger, call it once, verify via `adb logcat | grep WM-WorkerWrapper`, then revert.
+
+---
+
+## What's Done
 
 ### Camera & Gallery
-- CameraX with `PreviewView.ImplementationMode.COMPATIBLE`, real `ImageCapture`, pinch-to-zoom, gallery picker with pan/pinch/crop-to-frame. See prior handoff detail — unchanged.
+- CameraX with `PreviewView.ImplementationMode.COMPATIBLE`, real `ImageCapture`, pinch-to-zoom, gallery picker with pan/pinch/crop-to-frame. Camera screen now also has a scanning-sweep animation while `isScanning` is true (`ScanningSweepEffect` in `CameraScreen.kt`).
 
 ### Scan Result
-- Real inference via `runYoloInference()`, falls back to `mockDetectionResults.random()` only if no model bundled or `imageUri` is null — never falls back on a low-confidence *real* result (that's the confidence-floor path instead, a genuine "no condition" result, not a random fake one).
+- Real inference via `runYoloInference()`, falls back to `mockDetectionResults.random()` only if no model bundled or `imageUri` is null — never falls back on a low-confidence *real* result (that's the confidence-floor path, a genuine "no condition" result).
+- Condition guidance (description, symptoms, recommendation, distinguishing feature vs. other conditions) is shown directly on this screen now — see "Care Guide" below for what replaced it.
 
 ### Progress Tracker
-- Real scan history from Room DB, trend indicators based on `severity` (still real feature, untouched by the Scan Result severity-badge removal).
+- Real scan history from Room DB, grouped per condition and plotted as **confidence % over time**
+  (`ScanEntry.confidence`) — not severity; `ProgressTrackerScreen.kt` has no `severity` reference at
+  all. An earlier version of this doc claimed severity-based trend indicators, which was never
+  actually built; corrected here rather than carried forward.
 
-### Care Guide
-- 6 conditions: Acne Vulgaris, Atopic Dermatitis, Melasma, Tinea, Warts, Scabies. Each has Overview/Routine/Dos/Don'ts/Treatments, plus (added by a teammate) a "Recommended OTC Product" card per condition and a "Consult a Doctor" card for Scabies specifically.
-- **Known gap:** 3 of 5 recommended OTC products reference US-specific brands not confirmed available in PH pharmacies (Lotrimin AF, Compound W, and partially La Roche-Posay/The Ordinary) — flagged, not yet fixed. See README "Good First Issues."
+### Care Guide — REMOVED, replaced by inline condition guidance
+`CareGuideScreen.kt` is deleted. The description/symptoms/recommendation content that used to live there is now shown directly on the Scan Result screen (`mockDetectionResults` in `ScanResultScreen.kt`), tied to the condition that was actually detected rather than browsed separately. If you're looking for where the OTC-product-recommendation content went, it didn't migrate — that was scoped out with the screen. Flag if it's still wanted somewhere.
 
-### Clinic Locator
-- Real GPS + OSM Overpass API, no hardcoded/fake clinic data.
-- **Known gap:** "Open Now" badge defaults to `true` whenever real `opening_hours` data isn't available from OSM (same time the fallback "Contact clinic for hours" text shows) — this is misleading, a real clinic's open/closed status isn't actually known. User was going to research this themselves before a fix was implemented — check with them on where that landed. Fix would be defaulting to "Hours unknown" instead of `true`. See `isOpenNow()` in `ClinicLocatorScreen.kt`.
-- Also: Overpass only matches the exact `healthcare:speciality=dermatology` tag — a regex name-search fallback was tried and reverted (times out on the public Overpass instance). Real dermatology clinics that aren't tagged that way in OSM won't show up, even though they're on Google Maps. No fix implemented — documented as a known data-source limitation.
+### Clinic Locator — moved to Google Maps + Places (no longer OSM/Overpass)
+- Map is `maps-compose`'s `GoogleMap` with custom `BitmapDescriptorFactory` markers; clinic search is the Google Places API (`places:searchText`, query "dermatology clinic", 15km location bias, raw `HttpURLConnection` call rather than the Places SDK — see the header-attachment comment in `ClinicLocatorScreen.kt`, it needs `X-Android-Package`/`X-Android-Cert` manually or Google blocks it). OSRM is still used, but now only for drawing driving routes.
+- **`ANDROID_CERT_SHA1` in `ClinicLocatorScreen.kt` is hardcoded to one specific debug keystore.** Clinic search will silently return nothing for anyone building with a different debug keystore, or for a release build. Needs the correct SHA-1 added to the restricted API key in Google Cloud Console, and ideally read at runtime instead of hardcoded.
+- **`osmdroid` dependency removed** from `build.gradle.kts` (Sept 2026) — it was imported in zero files after this migration, pure dead weight.
+- **Known gap, unchanged by the migration**: "Open Now" badge defaults to `true` whenever Places doesn't return `regularOpeningHours.openNow` (`ClinicLocatorScreen.kt` line ~147) — misleading, since a clinic's actual open/closed status isn't known in that case. Fix would be defaulting to "Hours unknown" instead of `true`.
+- **Known gap**: Places' text search can miss real dermatology clinics that don't come up for that exact query phrasing, same class of limitation the old Overpass tag-match had, just with a different failure mode.
+
+### Contribute to Research
+See the dedicated section above — this used to be local-only, now it's a real pipeline.
 
 ### Profile
-- Unchanged from before except: password change now goes through Firebase reauthentication (`EmailAuthProvider` + `reauthenticate()` + `updatePassword()`), not local hash comparison. Email field is read-only (see Auth section above).
+- Password change goes through Firebase reauthentication (`EmailAuthProvider` + `reauthenticate()` + `updatePassword()`), not local hash comparison. Email field is read-only (see Auth section).
+- Contribute to Research toggle now actually schedules/cancels the upload worker, not just a local flag.
 
 ---
 
@@ -90,13 +125,18 @@ Reviewed the actual training log for the Atopic Dermatitis run (79 epochs, early
 
 | File | What it does |
 |---|---|
-| `DermaColors.kt` | Color constants, `DermaPrefs` keys (no more `KEY_IS_GUEST` — removed) |
-| `Screens.kt` | Login, Register, **VerifyEmailScreen** (new) |
-| `NavGraph.kt` | All routes, includes `Screen.VerifyEmail` |
-| `ml/YoloDetector.kt` | `runYoloInference()`, `CLASS_LABELS`, `MIN_CONFIDENCE_PERCENT`, `BOX_CONFIDENCE_THRESHOLD` — see YOLOv11 section above |
-| `ScanResultScreen.kt` | `DetectionResult` now has `isLowConfidence: Boolean = false`; severity badge removed from display, field still used by Progress Tracker |
-| `data/model/User.kt` | No more `isGuest` field (removed with guest mode) |
-| `DermaDatabase.kt` | Room DB **v5** now (bumped for guest-mode field removal) |
+| `DermaColors.kt` | Color constants, `DermaPrefs` keys, shared animation helpers (`pressScale`, `EntranceAnimation`) |
+| `Screens.kt` | Login, Register, VerifyEmailScreen, Privacy Policy dialog |
+| `NavGraph.kt` | All routes; push/pop slide transitions (no fade) |
+| `ml/YoloDetector.kt` | `runYoloInference()`, `CLASS_LABELS` (6-class, order-sensitive), `MIN_CONFIDENCE_PERCENT` (32, F1-derived), `BOX_CONFIDENCE_THRESHOLD` (0.25) |
+| `ScanResultScreen.kt` | `DetectionResult`, `mockDetectionResults` (condition guidance content, 11 entries — 6 real conditions + 5 parked acne subtypes), the self-heal fix for missing profile rows |
+| `worker/ContributionUploadWorker.kt` | Posts pending contributions to the Apps Script endpoint, Wi-Fi only |
+| `worker/NotificationScheduler.kt` | `NotificationScheduler` (scan reminders) + `ContributionUploadScheduler` |
+| `apps-script/ContributionUpload.gs` | The Drive upload endpoint — deploy as a Web App under your own Google account |
+| `data/model/User.kt` | No `isGuest` field (removed with guest mode) |
+| `data/model/ScanRecord.kt` | Has `contributedForTraining` and `uploadedForTraining` (separate flags — consented-and-saved vs. actually-uploaded) |
+| `DermaDatabase.kt` | Room DB **v6** now |
+| `training/merge_and_train_multiclass.ipynb` | The real 6-class merge + train pipeline (gitignored — ask a teammate for a copy) |
 
 ## DB Version History
 
@@ -107,8 +147,9 @@ Reviewed the actual training log for the Atopic Dermatitis run (79 epochs, early
 | 3 | Added `imagePath` + `contributedForTraining` to ScanRecord |
 | 4 | Added `firebaseUid`, `isGuest` to User (Firebase Auth) |
 | 5 | Removed `isGuest` from User (guest mode removed) |
+| 6 | Added `uploadedForTraining` to ScanRecord (Contribute to Research upload tracking) |
 
-Still uses `fallbackToDestructiveMigration()` — acceptable for dev/capstone, wipes local data on every version bump.
+Still uses `fallbackToDestructiveMigration()` — acceptable for dev/capstone, wipes local data on every version bump. **Known consequence, hit for real this pass**: a version bump can wipe the `users` table while a logged-in session persists in `SharedPreferences`, which silently broke "Save to History" until the self-heal fix (see Auth section).
 
 ## Known Non-Issues (VS Code)
 
@@ -117,9 +158,10 @@ VS Code shows "Unresolved reference: androidx" on every import in Kotlin files. 
 ## Reference Docs
 
 - `FIREBASE_AUTH_PLAN.md` — Firebase Auth rationale, guest mode history, manuscript impact
-- `THRESHOLD_EXPERIMENT.md` — confidence threshold experiment, full methodology and results
+- `THRESHOLD_EXPERIMENT.md` — `BOX_CONFIDENCE_THRESHOLD` experiment, full methodology and results (still accurate, this constant hasn't changed)
 - `SETUP.md` — groupmate onboarding
-- `README.md` — feature overview, "Good First Issues" list
+- `README.md` — feature overview, "Good First Issues" list, Contribute to Research pipeline writeup
+- `training/acne_subtypes_future/README.md` — why acne subtype differentiation is parked, and exactly what to check before resuming it
 
 ---
 

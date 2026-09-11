@@ -37,6 +37,7 @@ import com.dermalens.app.data.db.DermaDatabase
 import com.dermalens.app.data.model.ScanRecord
 import com.dermalens.app.data.model.User
 import com.dermalens.app.ui.screens.DermaPrefs
+import com.dermalens.app.ml.analysisFailedResult
 import com.dermalens.app.ml.runYoloInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -103,7 +104,9 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
 
     val loadedResult by produceState<DetectionResult?>(initialValue = null, imageUri) {
         value = withContext(Dispatchers.Default) {
-            imageUri?.let { runYoloInference(context, it) } ?: mockDetectionResults.random()
+            // Never fall back to mockDetectionResults.random() here: that turned any inference
+            // failure into a randomly invented diagnosis, complete with a confidence number.
+            imageUri?.let { runYoloInference(context, it) } ?: analysisFailedResult()
         }
     }
 
@@ -241,6 +244,30 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                     Text(result.description, fontSize = settings.textMd.sp, color = Color(0xFF374151), lineHeight = 22.sp)
                 }
 
+                if (!result.isLowConfidence && familyTrees.containsKey(result.condition)) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Family Tree Card -- static reference only, see FamilyTree.kt. Hidden on a
+                    // low-confidence result since there's no confirmed condition to show a tree for.
+                    ResultCard(icon = Icons.Default.AccountTree, iconBg = Color(0xFFF3E8FF), iconTint = DermaGreen, title = "Related Conditions") {
+                        Text(
+                            "See how ${result.condition} relates to similar-looking conditions and its own subtypes.",
+                            fontSize = settings.textSm.sp,
+                            color = Color(0xFF6B7280),
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { navController.navigate(Screen.FamilyTree.createRoute(result.condition)) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("View Family Tree")
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Symptoms Card
@@ -366,6 +393,9 @@ fun ScanResultScreen(navController: NavController, imageUri: String? = null) {
                                             contributedForTraining = contributeEnabled && savedImagePath.isNotEmpty()
                                         )
                                     )
+                                    if (contributeEnabled && savedImagePath.isNotEmpty()) {
+                                        com.dermalens.app.worker.ContributionUploadScheduler.triggerImmediateUpload(context)
+                                    }
                                     isSaved = true
                                 }
                             }
